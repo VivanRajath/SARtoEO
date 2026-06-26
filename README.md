@@ -150,32 +150,41 @@ pip install -r requirements.txt
 
 ### Google Colab (Training)
 
+For Google Colab training, we have implemented CLI overrides so you never need to manually edit `config.yaml` on the server. You can run training and stream checkpoints directly to your Google Drive to prevent losing progress if your Colab session times out.
+
 ```python
-# Cell 1 — Mount Drive and clone repo
+# Cell 1 — Mount Google Drive
 from google.colab import drive
 drive.mount('/content/drive')
 
-%cd /content/drive/MyDrive
-!git clone <your-repository-url> SAR2EO
-%cd SAR2EO
+# Cell 2 — Clone the repository to the fast local disk
+# (Cloning to local /content is faster for training execution than running out of Google Drive mount)
+%cd /content
+!git clone https://github.com/VivanRajath/SARtoEO.git
+%cd SARtoEO
 
-# Cell 2 — Install dependencies
+# Cell 3 — Install dependencies
 !pip install -q -r requirements.txt
 
-# Cell 3 — Upload / link your dataset
-# Option A: upload the agri/ folder directly to Colab
-# Option B: it's already in Drive at /content/drive/MyDrive/SAR2EO/data/agri/
-
-# Cell 4 — Train
-!python train.py --config config.yaml
-
-# Cell 5 — Download the checkpoint after training
-from google.colab import files
-files.download('checkpoints/checkpoint_latest.pth')
-# Or download a specific epoch: files.download('checkpoints/checkpoint_epoch_100.pth')
+# Cell 4 — Train the model using CLI overrides
+#
+# Replace the paths below with the actual paths in your Google Drive:
+#  - --dataset_path: The folder containing your s1/ and s2/ datasets in Drive
+#  - --checkpoint_dir: A folder in your Google Drive to save checkpoints (ensures no data loss)
+#  - --output_dir: A folder in your Google Drive to save logs, curves, and sample images
+#
+!python train.py --config config.yaml \
+    --dataset_path "/content/drive/MyDrive/path/to/your/dataset/agri" \
+    --checkpoint_dir "/content/drive/MyDrive/SAR2EO/checkpoints" \
+    --output_dir "/content/drive/MyDrive/SAR2EO/outputs"
 ```
 
-**After downloading the checkpoint**, place it in your local `checkpoints/` folder and use `infer.py` locally in VSCode.
+#### Why use CLI Overrides?
+1. **No Config Edits**: You don't have to edit `config.yaml` on Colab or commit machine-specific paths to Git.
+2. **Drive Persistence**: Checkpoints and output logs are written directly to Google Drive in real-time. If Colab disconnects, your weights are safely stored.
+3. **Faster I/O**: Cloning the code to local `/content` while keeping the heavy dataset/checkpoints on Drive offers the best balance of training speed and data persistence.
+
+**After training completes**, download the checkpoint from your Google Drive folder, place it in your local `checkpoints/` folder, and run local inference or evaluation.
 
 ---
 
