@@ -1,0 +1,52 @@
+# ============================================================
+# SAR-to-EO Pix2Pix — Central Configuration
+# ============================================================
+
+# ── Dataset ──────────────────────────────────────────────────────────────────
+dataset_path: "data/agri"     # root dir; must contain S1/ (or s1/) and S2/ (or s2/)
+image_size: 256               # all images are resized to image_size × image_size
+sar_channels: 1               # Sentinel-1 VV (grayscale)
+eo_channels: 3                # Sentinel-2 RGB
+
+# ── Data Splits ───────────────────────────────────────────────────────────────
+# Must sum to 1.0. Indices saved to outputs/data_split.csv for reproducibility.
+train_split: 0.70
+val_split:   0.15
+test_split:  0.15
+seed: 42                      # global random seed for splits and training
+
+# ── Augmentation ─────────────────────────────────────────────────────────────
+augment: true                 # random h-flip + v-flip applied to train set only
+
+# ── Training ─────────────────────────────────────────────────────────────────
+batch_size: 2
+num_epochs: 100
+learning_rate: 0.0002
+optimizer: "adam"
+betas: [0.5, 0.999]           # Adam beta1, beta2 (paper values)
+
+# ── Loss Functions ────────────────────────────────────────────────────────────
+loss_functions:
+  - "GAN (BCEWithLogitsLoss)"
+  - "L1"
+lambda_l1: 100                # Generator total loss = GAN_loss + lambda_l1 * L1_loss
+ablation_log: true            # Also log the L1-only generator loss each epoch
+                              # Produces a second curve on the loss plot for comparison
+
+# ── Architecture ─────────────────────────────────────────────────────────────
+ngf: 64                       # base generator filter count  (8-level U-Net)
+ndf: 64                       # base discriminator filter count (PatchGAN)
+
+# ── Checkpointing ─────────────────────────────────────────────────────────────
+checkpoint_dir: "checkpoints"
+checkpoint_every: 5           # save a numbered checkpoint every N epochs
+
+# ── Output ───────────────────────────────────────────────────────────────────
+output_dir: "outputs"
+sample_every: 5               # save a qualitative triplet image every N epochs
+
+# ── Device ───────────────────────────────────────────────────────────────────
+device: "auto"                # "auto" → CUDA if available, else CPU
+
+# ── Workers ──────────────────────────────────────────────────────────────────
+num_workers: "auto"           # "auto" → 0 on Windows, 2 on Linux/Colab

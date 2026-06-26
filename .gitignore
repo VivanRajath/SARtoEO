@@ -1,0 +1,42 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── Virtual Environments ──────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+
+# ── Heavy Dataset (too large for GitHub) ─────────────────────────────────────
+data/
+data_test/
+
+# ── Model Weights & Checkpoints (too large for GitHub) ───────────────────────
+checkpoints/
+*.pth
+*.pt
+*.ckpt
+*.pkl
+*.h5
+
+# ── Training Outputs ──────────────────────────────────────────────────────────
+outputs/
+
+# ── OS garbage ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini

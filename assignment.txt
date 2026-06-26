@@ -1,0 +1,351 @@
+Sure. Here's the assignment content condensed into a clean **TXT format** that you can directly save as `GalaxEye_Assignment.txt`. 
+
+```txt
+============================================================
+GALAXEYE SPACE – TECHNICAL ASSIGNMENT
+AI Research Intern – SAR-to-EO Image Translation
+============================================================
+
+POSITION:
+Satellite AI Research Intern
+
+TOPIC:
+SAR-to-EO Image Translation
+
+------------------------------------------------------------
+1. OVERVIEW
+------------------------------------------------------------
+
+Task:
+Given a Synthetic Aperture Radar (SAR) image, generate the
+corresponding Electro-Optical (EO/RGB) image.
+
+Objective:
+Evaluate the candidate's ability to:
+- Understand SAR and EO data
+- Design and implement a solution
+- Justify technical decisions
+- Analyze results critically
+- Communicate findings effectively
+
+Important:
+SAR-to-EO translation is an ill-posed problem because SAR
+contains no direct color information. Multiple EO images
+may correspond to the same SAR image.
+
+A well-reasoned approach is valued more than high scores
+without explanation.
+
+------------------------------------------------------------
+2. DATASET
+------------------------------------------------------------
+
+Only the following datasets may be used:
+
+1. SEN1-2
+   - 282,384 paired patches
+   - Sentinel-1 VV SAR
+   - Sentinel-2 RGB
+   - Resolution: 256×256
+   - Size: ~44GB
+
+2. SEN12MS
+   - 180,662 triplets
+   - Sentinel-1 VV+VH SAR
+   - Sentinel-2 13-band imagery
+   - MODIS land cover
+   - Resolution: 256×256
+   - Size: ~510GB
+
+3. Sentinel-1 & Sentinel-2 Image Pairs (Kaggle)
+   - Terrain-separated SAR/EO pairs
+
+Rules:
+- No external remote sensing datasets allowed.
+- You may use a subset of the datasets.
+- Document your selection strategy.
+- Cite all datasets used.
+
+For SEN12MS:
+Use Sentinel-2 bands:
+- B4 = Red
+- B3 = Green
+- B2 = Blue
+
+------------------------------------------------------------
+2.2 DATA PREPARATION
+------------------------------------------------------------
+
+You must:
+- Create your own train/validation/test split.
+- Avoid data leakage.
+- Consider splitting by:
+  - Scene
+  - Geography
+  - Season
+
+Preprocessing:
+- SAR typically requires log/dB scaling.
+- Optical images require normalization.
+- Document all preprocessing steps.
+
+------------------------------------------------------------
+2.3 HELD-OUT PRIVATE EVALUATION
+------------------------------------------------------------
+
+GalaxEye will evaluate your model on private unseen
+Sentinel scenes.
+
+Inference requirements:
+
+Input:
+- Directory of SAR images
+- Single channel
+- VV polarization
+- 256×256
+- PNG
+- dB scaled
+- Normalized to [0,255]
+
+Output:
+- Directory of RGB images
+- 256×256 PNG
+- Same filenames
+
+CLI:
+python infer.py \
+    --input_dir <path> \
+    --output_dir <path> \
+    --weights <checkpoint>
+
+Requirements:
+- Must run on one GPU
+- Maximum 16GB VRAM
+- No internet access
+- Local weights only
+
+------------------------------------------------------------
+3. TASK
+------------------------------------------------------------
+
+Generate EO RGB images from SAR images.
+
+Allowed approaches:
+- Pix2Pix
+- CycleGAN
+- Conditional GANs
+- Diffusion models
+- Any other AI-based approach
+
+Requirements:
+- Justify all design decisions.
+- No external datasets.
+- Perform at least one controlled ablation study.
+
+Examples:
+- L1 vs L1+GAN loss
+- With/without perceptual loss
+- Different generator sizes
+
+You must also:
+- Log train loss per epoch
+- Log validation loss per epoch
+- Save loss curves
+- Save raw CSV/JSON logs
+
+------------------------------------------------------------
+4. EVALUATION METRICS
+------------------------------------------------------------
+
+Primary Metrics (used for ranking):
+- LPIPS ↓
+- FID ↓
+
+Secondary Metrics:
+- SSIM ↑
+- PSNR ↑
+
+You must report:
+- Validation metrics
+- Test metrics
+
+Qualitative evaluation:
+At least five examples showing:
+
+SAR Input
+     ↓
+Generated EO
+     ↓
+Ground Truth EO
+
+Discuss:
+- Success cases
+- Failure cases
+- Error patterns
+- Pixel vs perceptual gap
+
+------------------------------------------------------------
+5. DELIVERABLES
+------------------------------------------------------------
+
+Submit:
+
+1. Public GitHub repository
+2. Public model weights link
+3. ZIP file
+
+------------------------------------------------------------
+5.1 GITHUB REPOSITORY
+------------------------------------------------------------
+
+Repository must contain:
+
+- Dataset loaders
+- Model code
+- Training script
+- Evaluation script
+- infer.py
+- Configuration file
+- README.md
+
+Configuration file should include:
+- Learning rate
+- Batch size
+- Epochs
+- Optimizer
+- Loss functions
+- Image size
+- Augmentations
+- Random seed
+- Other hyperparameters
+
+Training logs:
+- Loss curves
+- CSV/JSON logs
+- GAN losses if applicable
+
+------------------------------------------------------------
+README REQUIREMENTS
+------------------------------------------------------------
+
+Include:
+
+1. Project description
+2. Requirements and versions
+3. Environment setup
+4. Dataset structure
+5. Training command
+6. Inference command
+7. Evaluation command
+8. Model weights link
+9. Results table
+10. References
+
+------------------------------------------------------------
+5.2 TECHNICAL REPORT
+------------------------------------------------------------
+
+Required sections:
+
+1. Abstract
+2. Literature Survey
+3. Methodology
+4. Results
+5. Future Work
+6. Conclusion
+
+Methodology should explain:
+- Architecture
+- Loss functions
+- Preprocessing
+- Training strategy
+- Ablation studies
+
+Results should include:
+- LPIPS
+- FID
+- SSIM
+- PSNR
+- Qualitative examples
+- Error analysis
+- Loss curves
+
+Future work:
+Describe what you would explore if you joined GalaxEye.
+
+------------------------------------------------------------
+5.3 TIME AND RESOURCE LOG
+------------------------------------------------------------
+
+Include:
+
+- Time spent on:
+  - Data exploration
+  - Literature review
+  - Implementation
+  - Training
+  - Evaluation
+  - Report writing
+
+- Hardware used:
+  - Local/cloud
+  - GPU model
+  - VRAM
+  - Number of GPUs
+
+- Training time:
+  - Per epoch
+  - Total runtime
+
+- Resource constraints
+
+------------------------------------------------------------
+6. EVALUATION CRITERIA
+------------------------------------------------------------
+
+GalaxEye evaluates:
+
+- Data understanding
+- Literature survey
+- Research thinking
+- Implementation quality
+- Results analysis
+- Generalization
+- Future work
+- Communication skills
+
+------------------------------------------------------------
+7. SUBMISSION
+------------------------------------------------------------
+
+Submit:
+
+1. Public GitHub repository link
+2. Public model weights link
+3. ZIP file
+
+ZIP file should contain:
+
+- Technical report PDF
+- Resource log
+- Loss plots
+- Qualitative results
+- Supporting documents
+
+Do NOT include model weights in ZIP.
+
+------------------------------------------------------------
+8. IMPORTANT NOTES
+------------------------------------------------------------
+
+- Use only permitted datasets.
+- Pretrained weights are allowed.
+- Google Colab/Kaggle are allowed.
+- LLMs/coding assistants are allowed.
+- Partial submissions are accepted if documented.
+- Private repositories will not be evaluated.
+
+============================================================
+END OF DOCUMENT
+============================================================
+```
