@@ -96,46 +96,65 @@ def load_config():
     parser = argparse.ArgumentParser(description="Train Pix2Pix SAR-to-EO model")
     parser.add_argument("--config", type=str, default="config.yaml",
                         help="Path to YAML config file")
+    # ── CLI overrides: these always win over config.yaml ─────────────────────
+    # Useful for Colab where the dataset lives in Google Drive:
+    #   !python train.py --dataset_path /content/drive/MyDrive/SAR2EO/data/agri
+    parser.add_argument("--dataset_path",    type=str, default=None,
+                        help="Override dataset_path from config (e.g. Google Drive path in Colab).")
+    parser.add_argument("--output_dir",      type=str, default=None,
+                        help="Override output_dir from config.")
+    parser.add_argument("--checkpoint_dir",  type=str, default=None,
+                        help="Override checkpoint_dir from config.")
     args, _ = parser.parse_known_args()
 
     if not os.path.exists(args.config):
         print(f"[Config] '{args.config}' not found — using built-in defaults.")
-        return
+    else:
+        print(f"[Config] Loading from: {args.config}")
+        with open(args.config, "r") as f:
+            cfg = yaml.safe_load(f) or {}
 
-    print(f"[Config] Loading from: {args.config}")
-    with open(args.config, "r") as f:
-        cfg = yaml.safe_load(f) or {}
+        DATASET_PATH      = cfg.get("dataset_path",     DATASET_PATH)
+        IMAGE_SIZE        = cfg.get("image_size",        IMAGE_SIZE)
+        BATCH_SIZE        = cfg.get("batch_size",        BATCH_SIZE)
+        NUM_EPOCHS        = cfg.get("num_epochs",        NUM_EPOCHS)
+        LEARNING_RATE     = cfg.get("learning_rate",     LEARNING_RATE)
+        BETAS             = tuple(cfg.get("betas",       list(BETAS)))
+        LAMBDA_L1         = cfg.get("lambda_l1",         LAMBDA_L1)
+        AUGMENT           = cfg.get("augment",           AUGMENT)
+        ABLATION_LOG      = cfg.get("ablation_log",      ABLATION_LOG)
+        NGF               = cfg.get("ngf",               NGF)
+        NDF               = cfg.get("ndf",               NDF)
+        TRAIN_SPLIT       = cfg.get("train_split",       TRAIN_SPLIT)
+        VAL_SPLIT         = cfg.get("val_split",         VAL_SPLIT)
+        TEST_SPLIT        = cfg.get("test_split",        TEST_SPLIT)
+        SEED              = cfg.get("seed",              SEED)
+        CHECKPOINT_EVERY  = cfg.get("checkpoint_every",  CHECKPOINT_EVERY)
+        SAMPLE_EVERY      = cfg.get("sample_every",      SAMPLE_EVERY)
+        CHECKPOINT_DIR    = cfg.get("checkpoint_dir",    CHECKPOINT_DIR)
+        OUTPUT_DIR        = cfg.get("output_dir",        OUTPUT_DIR)
 
-    DATASET_PATH      = cfg.get("dataset_path",     DATASET_PATH)
-    IMAGE_SIZE        = cfg.get("image_size",        IMAGE_SIZE)
-    BATCH_SIZE        = cfg.get("batch_size",        BATCH_SIZE)
-    NUM_EPOCHS        = cfg.get("num_epochs",        NUM_EPOCHS)
-    LEARNING_RATE     = cfg.get("learning_rate",     LEARNING_RATE)
-    BETAS             = tuple(cfg.get("betas",       list(BETAS)))
-    LAMBDA_L1         = cfg.get("lambda_l1",         LAMBDA_L1)
-    AUGMENT           = cfg.get("augment",           AUGMENT)
-    ABLATION_LOG      = cfg.get("ablation_log",      ABLATION_LOG)
-    NGF               = cfg.get("ngf",               NGF)
-    NDF               = cfg.get("ndf",               NDF)
-    TRAIN_SPLIT       = cfg.get("train_split",       TRAIN_SPLIT)
-    VAL_SPLIT         = cfg.get("val_split",         VAL_SPLIT)
-    TEST_SPLIT        = cfg.get("test_split",        TEST_SPLIT)
-    SEED              = cfg.get("seed",              SEED)
-    CHECKPOINT_EVERY  = cfg.get("checkpoint_every",  CHECKPOINT_EVERY)
-    SAMPLE_EVERY      = cfg.get("sample_every",      SAMPLE_EVERY)
-    CHECKPOINT_DIR    = cfg.get("checkpoint_dir",    CHECKPOINT_DIR)
-    OUTPUT_DIR        = cfg.get("output_dir",        OUTPUT_DIR)
+        # num_workers: "auto" or integer
+        nw = cfg.get("num_workers", "auto")
+        NUM_WORKERS = get_num_workers() if str(nw).lower() == "auto" else int(nw)
 
-    # num_workers: "auto" or integer
-    nw = cfg.get("num_workers", "auto")
-    NUM_WORKERS = get_num_workers() if str(nw).lower() == "auto" else int(nw)
+        # device: "auto", "cuda", or "cpu"
+        dev = cfg.get("device", "auto")
+        DEVICE = (torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                  if dev == "auto" else torch.device(dev))
 
-    # device: "auto", "cuda", or "cpu"
-    dev = cfg.get("device", "auto")
-    DEVICE = (torch.device("cuda" if torch.cuda.is_available() else "cpu")
-              if dev == "auto" else torch.device(dev))
+    # ── CLI flags override anything set by config.yaml ────────────────────────
+    if args.dataset_path   is not None:
+        DATASET_PATH   = args.dataset_path
+        print(f"[Config] dataset_path  overridden via CLI -> {DATASET_PATH}")
+    if args.output_dir     is not None:
+        OUTPUT_DIR     = args.output_dir
+        print(f"[Config] output_dir    overridden via CLI -> {OUTPUT_DIR}")
+    if args.checkpoint_dir is not None:
+        CHECKPOINT_DIR = args.checkpoint_dir
+        print(f"[Config] checkpoint_dir overridden via CLI -> {CHECKPOINT_DIR}")
 
-    # Recompute derived paths now that OUTPUT_DIR is set
+    # Recompute derived paths now that OUTPUT_DIR is finalised
     LOG_CSV           = os.path.join(OUTPUT_DIR, "training_log.csv")
     LOSS_CURVE        = os.path.join(OUTPUT_DIR, "loss_curve.png")
     SPLIT_CSV         = os.path.join(OUTPUT_DIR, "data_split.csv")

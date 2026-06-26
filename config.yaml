@@ -3,8 +3,11 @@
 # ============================================================
 
 # ── Dataset ──────────────────────────────────────────────────────────────────
+# Local default path. When training in Google Colab, override this at runtime:
+#   !python train.py --dataset_path /content/drive/MyDrive/SAR2EO/data/agri
+# You do NOT need to edit this file for Colab — just pass the flag above.
 dataset_path: "data/agri"     # root dir; must contain S1/ (or s1/) and S2/ (or s2/)
-image_size: 256               # all images are resized to image_size × image_size
+image_size: 256               # all images are resized to image_size x image_size
 sar_channels: 1               # Sentinel-1 VV (grayscale)
 eo_channels: 3                # Sentinel-2 RGB
 
