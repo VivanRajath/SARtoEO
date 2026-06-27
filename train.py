@@ -64,7 +64,7 @@ from utils        import set_seed, denormalize, save_triplet_grid, get_num_worke
 DATASET_PATH      = "data/agri"
 IMAGE_SIZE        = 256
 BATCH_SIZE        = 2
-NUM_EPOCHS        = 100
+NUM_EPOCHS        = 15
 LEARNING_RATE     = 0.0002
 BETAS             = (0.5, 0.999)
 LAMBDA_L1         = 100
@@ -78,7 +78,7 @@ VAL_SPLIT         = 0.15
 TEST_SPLIT        = 0.15
 SEED              = 42
 
-CHECKPOINT_EVERY  = 5
+CHECKPOINT_EVERY  = 1
 SAMPLE_EVERY      = 5
 CHECKPOINT_DIR    = "checkpoints"
 OUTPUT_DIR        = "outputs"

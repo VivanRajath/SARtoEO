@@ -23,7 +23,7 @@ augment: true                 # random h-flip + v-flip applied to train set only
 
 # ── Training ─────────────────────────────────────────────────────────────────
 batch_size: 2
-num_epochs: 100
+num_epochs: 15
 learning_rate: 0.0002
 optimizer: "adam"
 betas: [0.5, 0.999]           # Adam beta1, beta2 (paper values)
@@ -42,7 +42,7 @@ ndf: 64                       # base discriminator filter count (PatchGAN)
 
 # ── Checkpointing ──────────────────────────────────────────────────────────────
 checkpoint_dir: "checkpoints"
-checkpoint_every: 5           # save a numbered checkpoint every N epochs
+checkpoint_every: 1           # save a numbered checkpoint every N epochs
 
 # ── Colab resilience ────────────────────────────────────────────────────────────
 # Mirror every checkpoint to Google Drive so they survive a Colab runtime
