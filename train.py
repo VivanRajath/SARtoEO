@@ -57,14 +57,12 @@ from discriminator import Discriminator
 from utils        import set_seed, denormalize, save_triplet_grid, get_num_workers
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Configuration defaults (overridden by config.yaml via load_config())
-# ══════════════════════════════════════════════════════════════════════════════
+# --- Configuration defaults (overridden by config.yaml) ---
 
 DATASET_PATH      = "data/agri"
 IMAGE_SIZE        = 256
 BATCH_SIZE        = 2
-NUM_EPOCHS        = 15
+NUM_EPOCHS        = 50
 LEARNING_RATE     = 0.0002
 BETAS             = (0.5, 0.999)
 LAMBDA_L1         = 100
@@ -83,15 +81,10 @@ SAMPLE_EVERY      = 5
 CHECKPOINT_DIR    = "checkpoints"
 OUTPUT_DIR        = "outputs"
 
-# ── Colab-resilience settings ─────────────────────────────────────────────────
-# Google Drive path to mirror checkpoints so they survive Colab runtime restarts.
-# Set via CLI: --gdrive_checkpoint_dir /content/drive/MyDrive/SAR2EO/checkpoints
-# or in config.yaml:  gdrive_checkpoint_dir: "/content/drive/MyDrive/SAR2EO/checkpoints"
-# Leave as None (or omit from config) when NOT running on Colab.
+# Colab: set gdrive_checkpoint_dir to a Drive path to persist checkpoints across restarts.
 GDRIVE_CHECKPOINT_DIR   = None
 
-# Save an emergency in-epoch checkpoint every N batches.
-# Useful for very long epochs — 0 disables it.
+# In-epoch emergency save every N batches (0 = disabled).
 EMERGENCY_SAVE_EVERY_N  = 0
 
 NUM_WORKERS       = get_num_workers()
@@ -103,14 +96,11 @@ LOSS_CURVE         = os.path.join(OUTPUT_DIR, "loss_curve.png")
 SPLIT_CSV          = os.path.join(OUTPUT_DIR, "data_split.csv")
 TEST_METRICS_JSON  = os.path.join(OUTPUT_DIR, "test_metrics.json")
 
-# ── Runtime state used by the emergency-save handler ─────────────────────────
-# These are populated during training so the signal handler can flush them.
-_emergency_state: dict = {}   # filled in train() with live model/optimizer refs
+# Populated in train() so the signal/atexit handler can flush weights on disconnect.
+_emergency_state: dict = {}
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Config Loader
-# ══════════════════════════════════════════════════════════════════════════════
+# --- Config Loader ---
 
 def load_config():
     """Parse CLI args, load config.yaml, and overwrite global constants."""
@@ -125,9 +115,7 @@ def load_config():
     parser = argparse.ArgumentParser(description="Train Pix2Pix SAR-to-EO model")
     parser.add_argument("--config", type=str, default="config.yaml",
                         help="Path to YAML config file")
-    # ── CLI overrides: these always win over config.yaml ─────────────────────
-    # Useful for Colab where the dataset lives in Google Drive:
-    #   !python train.py --dataset_path /content/drive/MyDrive/SAR2EO/data/agri
+    # CLI overrides always win over config.yaml (useful for Colab/Drive paths).
     parser.add_argument("--dataset_path",    type=str, default=None,
                         help="Override dataset_path from config (e.g. Google Drive path in Colab).")
     parser.add_argument("--output_dir",      type=str, default=None,
@@ -168,16 +156,14 @@ def load_config():
         GDRIVE_CHECKPOINT_DIR = cfg.get("gdrive_checkpoint_dir", GDRIVE_CHECKPOINT_DIR)
         EMERGENCY_SAVE_EVERY_N = int(cfg.get("emergency_save_every_n_batches", EMERGENCY_SAVE_EVERY_N))
 
-        # num_workers: "auto" or integer
-        nw = cfg.get("num_workers", "auto")
+        nw = cfg.get("num_workers", "auto")  # "auto" or integer
         NUM_WORKERS = get_num_workers() if str(nw).lower() == "auto" else int(nw)
 
-        # device: "auto", "cuda", or "cpu"
-        dev = cfg.get("device", "auto")
+        dev = cfg.get("device", "auto")  # "auto", "cuda", or "cpu"
         DEVICE = (torch.device("cuda" if torch.cuda.is_available() else "cpu")
                   if dev == "auto" else torch.device(dev))
 
-    # ── CLI flags override anything set by config.yaml ────────────────────────
+    # CLI flags override config.yaml.
     if args.dataset_path   is not None:
         DATASET_PATH   = args.dataset_path
         print(f"[Config] dataset_path  overridden via CLI -> {DATASET_PATH}")
@@ -191,7 +177,7 @@ def load_config():
         GDRIVE_CHECKPOINT_DIR = args.gdrive_checkpoint_dir
         print(f"[Config] gdrive_checkpoint_dir overridden via CLI -> {GDRIVE_CHECKPOINT_DIR}")
 
-    # Recompute derived paths now that OUTPUT_DIR is finalised
+    # Recompute derived paths after OUTPUT_DIR is finalised.
     LOG_CSV           = os.path.join(OUTPUT_DIR, "training_log.csv")
     LOSS_CURVE        = os.path.join(OUTPUT_DIR, "loss_curve.png")
     SPLIT_CSV         = os.path.join(OUTPUT_DIR, "data_split.csv")
@@ -201,9 +187,7 @@ def load_config():
 load_config()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Data Split
-# ══════════════════════════════════════════════════════════════════════════════
+# --- Data Split ---
 
 def build_splits(full_dataset: SAREODataset):
     """
@@ -238,9 +222,7 @@ def build_splits(full_dataset: SAREODataset):
     return train_ds.indices, val_ds.indices, test_ds.indices
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Checkpoint Helpers
-# ══════════════════════════════════════════════════════════════════════════════
+# --- Checkpoint Helpers ---
 
 def _mirror_to_gdrive(src_path: str, label: str = "") -> None:
     """
@@ -256,7 +238,7 @@ def _mirror_to_gdrive(src_path: str, label: str = "") -> None:
         tag = f" [{label}]" if label else ""
         print(f"  [GDrive{tag}] Mirrored -> {dst}")
     except Exception as exc:
-        # Never crash training because Drive is slow / disconnected
+        # Never crash training over a Drive error.
         print(f"  [GDrive] Warning: could not mirror {src_path}: {exc}")
 
 
@@ -304,7 +286,7 @@ def emergency_save(signum=None, frame=None) -> None:
     can resume from the latest completed batch.
     """
     if not _emergency_state:
-        return   # train() hasn't started yet — nothing to save
+        return
 
     gen    = _emergency_state.get("gen")
     disc   = _emergency_state.get("disc")
@@ -323,7 +305,6 @@ def emergency_save(signum=None, frame=None) -> None:
         print(f"[Emergency] Save failed: {exc}")
 
     if signum is not None:
-        # Re-raise so the process exits cleanly
         sys.exit(1)
 
 
@@ -348,10 +329,9 @@ def load_checkpoint(gen, disc, opt_G, opt_D) -> int:
     Returns:
         start epoch (0 if no checkpoint found).
     """
-    # Prefer local checkpoint
     local_path = os.path.join(CHECKPOINT_DIR, "checkpoint_latest.pth")
 
-    # Fall back to Google Drive if local is missing
+    # Fall back to Drive if local was wiped by a Colab restart.
     if not os.path.exists(local_path) and GDRIVE_CHECKPOINT_DIR:
         drive_path = os.path.join(GDRIVE_CHECKPOINT_DIR, "checkpoint_latest.pth")
         if os.path.exists(drive_path):
@@ -375,9 +355,7 @@ def load_checkpoint(gen, disc, opt_G, opt_D) -> int:
     return start
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Logging
-# ══════════════════════════════════════════════════════════════════════════════
+# --- Logging ---
 
 def init_csv():
     """Create CSV with header row if it doesn't already exist."""
@@ -401,9 +379,7 @@ def log_csv(epoch, tr_g, tr_g_l1, tr_d, v_g, v_g_l1, v_d):
         ])
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Sample Image
-# ══════════════════════════════════════════════════════════════════════════════
+# --- Sample Image ---
 
 def save_sample(gen, sar_batch: torch.Tensor, gt_batch: torch.Tensor, epoch: int):
     """
@@ -422,9 +398,7 @@ def save_sample(gen, sar_batch: torch.Tensor, gt_batch: torch.Tensor, epoch: int
     print(f"  [Sample] Saved {out}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Loss Curve
-# ══════════════════════════════════════════════════════════════════════════════
+# --- Loss Curve ---
 
 def plot_loss_curve(history: list):
     """
@@ -474,9 +448,7 @@ def plot_loss_curve(history: list):
     print(f"[Plot] Loss curve -> {LOSS_CURVE}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Test Evaluation
-# ══════════════════════════════════════════════════════════════════════════════
+# --- Test Evaluation ---
 
 def evaluate_test_set(gen, test_loader: DataLoader):
     """
@@ -499,7 +471,7 @@ def evaluate_test_set(gen, test_loader: DataLoader):
             fake_eo   = gen(sar_batch)
             total_l1 += l1_fn(fake_eo, real_eo).item()
 
-            # Save up to 5 triplet examples
+            # Save up to 5 qualitative triplets.
             for j in range(sar_batch.size(0)):
                 if n_saved >= 5:
                     break
@@ -529,21 +501,18 @@ def evaluate_test_set(gen, test_loader: DataLoader):
     print(f"[Test] Triplets -> {OUTPUT_DIR}/test_example_*.png  ({n_saved} saved)")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Main Training Loop
-# ══════════════════════════════════════════════════════════════════════════════
+# --- Main Training Loop ---
 
 def train():
     set_seed(SEED)
     _register_emergency_handlers()
 
-    # ── Dataset ───────────────────────────────────────────────────────────────
-    # Load without augmentation first (used for val/test subsets and split computation)
+    # Dataset — load without augmentation first (val/test use it as-is).
     full_dataset = SAREODataset(DATASET_PATH, image_size=IMAGE_SIZE, augment=False)
 
     train_idx, val_idx, test_idx = build_splits(full_dataset)
 
-    # For the training subset, load a second instance WITH augmentation enabled
+    # Training subset uses a second dataset instance with augmentation enabled.
     aug_dataset  = SAREODataset(DATASET_PATH, image_size=IMAGE_SIZE, augment=AUGMENT)
     train_subset = Subset(aug_dataset,  train_idx)
     val_subset   = Subset(full_dataset, val_idx)
@@ -557,7 +526,7 @@ def train():
     test_loader  = DataLoader(test_subset,  batch_size=BATCH_SIZE, shuffle=False,
                               num_workers=NUM_WORKERS, pin_memory=pin)
 
-    # ── Print run summary ──────────────────────────────────────────────────────
+    # Run summary.
     print("=" * 65)
     print("  Pix2Pix SAR-to-EO  |  Training")
     print("=" * 65)
@@ -570,23 +539,23 @@ def train():
     print(f"  ngf / ndf    : {NGF} / {NDF}")
     print()
 
-    # ── Models ────────────────────────────────────────────────────────────────
+    # Models.
     gen  = Generator(in_channels=1, out_channels=3, ngf=NGF).to(DEVICE)
     disc = Discriminator(in_channels=4, ndf=NDF).to(DEVICE)
 
-    # ── Loss functions ────────────────────────────────────────────────────────
+    # Loss functions.
     gan_loss = nn.BCEWithLogitsLoss()
     l1_loss  = nn.L1Loss()
 
-    # ── Optimizers ────────────────────────────────────────────────────────────
+    # Optimizers.
     opt_G = torch.optim.Adam(gen.parameters(),  lr=LEARNING_RATE, betas=BETAS)
     opt_D = torch.optim.Adam(disc.parameters(), lr=LEARNING_RATE, betas=BETAS)
 
-    # ── Resume ────────────────────────────────────────────────────────────────
+    # Resume from checkpoint if one exists.
     start_epoch = load_checkpoint(gen, disc, opt_G, opt_D)
     init_csv()
 
-    # Populate the emergency-save state now that models exist
+    # Populate emergency-save state so the signal handler has live references.
     _emergency_state.update({
         "gen":   gen,
         "disc":  disc,
@@ -602,12 +571,10 @@ def train():
 
     history = []
 
-    # ══════════════════════════════════════════════════════════════════════════
     for epoch in range(start_epoch, NUM_EPOCHS):
-        # Keep emergency state current so a mid-epoch signal saves this epoch
-        _emergency_state["epoch"] = epoch
+        _emergency_state["epoch"] = epoch  # keep current so signals save this epoch
 
-        # ── TRAIN ─────────────────────────────────────────────────────────────
+        # Train.
         gen.train(); disc.train()
         tr_g_total = tr_g_l1 = tr_d = 0.0
         first_sar = first_gt = None
@@ -625,7 +592,7 @@ def train():
             real_eo   = real_eo.to(DEVICE)
             fake_eo   = gen(sar_batch)
 
-            # Discriminator step
+            # Discriminator.
             real_pred   = disc(sar_batch, real_eo)
             fake_pred_d = disc(sar_batch, fake_eo.detach())
             d_loss = (
@@ -634,7 +601,7 @@ def train():
             ) / 2
             opt_D.zero_grad(); d_loss.backward(); opt_D.step()
 
-            # Generator step
+            # Generator.
             fake_pred = disc(sar_batch, fake_eo)
             g_l1      = l1_loss(fake_eo, real_eo)
             g_gan     = gan_loss(fake_pred, torch.ones_like(fake_pred))
@@ -643,16 +610,14 @@ def train():
 
             tr_d      += d_loss.item()
             tr_g_total += g_total.item()
-            tr_g_l1   += (LAMBDA_L1 * g_l1).item()   # L1-only for ablation log
+            tr_g_l1   += (LAMBDA_L1 * g_l1).item()  # L1-only (ablation)
 
             pbar.set_postfix(
                 d=f"{d_loss.item():.4f}",
                 g=f"{g_total.item():.4f}",
             )
 
-            # ── In-epoch emergency save ────────────────────────────────────────
-            # Fires every EMERGENCY_SAVE_EVERY_N batches (0 = disabled).
-            # Saves a "_inepoch" checkpoint so a mid-epoch crash can be recovered.
+            # In-epoch emergency save (fires every N batches, 0 = off).
             if (EMERGENCY_SAVE_EVERY_N > 0
                     and (batch_idx + 1) % EMERGENCY_SAVE_EVERY_N == 0):
                 save_checkpoint(gen, disc, opt_G, opt_D, epoch,
@@ -665,7 +630,7 @@ def train():
         n = len(train_loader)
         avg_tr_g, avg_tr_l1, avg_tr_d = tr_g_total/n, tr_g_l1/n, tr_d/n
 
-        # ── VALIDATE ──────────────────────────────────────────────────────────
+        # Validate.
         gen.eval(); disc.eval()
         v_g_total = v_g_l1 = v_d = 0.0
 
@@ -692,7 +657,7 @@ def train():
         m = len(val_loader)
         avg_v_g, avg_v_l1, avg_v_d = v_g_total/m, v_g_l1/m, v_d/m
 
-        # ── Epoch summary ──────────────────────────────────────────────────────
+        # Epoch summary.
         print(
             f"Epoch {epoch+1:>3}/{NUM_EPOCHS}  "
             f"| Train — G(total): {avg_tr_g:.4f}  G(L1): {avg_tr_l1:.4f}  D: {avg_tr_d:.4f}"
@@ -712,7 +677,7 @@ def train():
 
         save_checkpoint(gen, disc, opt_G, opt_D, epoch)
 
-    # ── Post-training ──────────────────────────────────────────────────────────
+    # Post-training.
     if history:
         plot_loss_curve(history)
 

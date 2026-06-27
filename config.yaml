@@ -23,7 +23,7 @@ augment: true                 # random h-flip + v-flip applied to train set only
 
 # ── Training ─────────────────────────────────────────────────────────────────
 batch_size: 2
-num_epochs: 15
+num_epochs: 50
 learning_rate: 0.0002
 optimizer: "adam"
 betas: [0.5, 0.999]           # Adam beta1, beta2 (paper values)
