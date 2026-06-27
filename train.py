@@ -9,20 +9,33 @@ Features:
   - Per-epoch CSV log + loss curve PNG
   - Qualitative triplet images (SAR | Pred EO | GT EO) saved periodically
   - Automatic test-set L1 evaluation + 5 triplet examples after training
+  - [Colab-resilient] Google Drive checkpoint mirroring — survives runtime restarts
+  - [Colab-resilient] SIGTERM + atexit emergency save on disconnect / timeout
+  - [Colab-resilient] In-epoch periodic save every N batches
 
 Usage:
     python train.py [--config config.yaml]
 
-Colab usage:
-    !python train.py --config config.yaml
+Colab usage (point checkpoints at Google Drive so they survive restarts):
+    !python train.py --config config.yaml \\
+        --checkpoint_dir /content/drive/MyDrive/SAR2EO/checkpoints \\
+        --gdrive_checkpoint_dir /content/drive/MyDrive/SAR2EO/checkpoints
+
+    # Or just pass gdrive_checkpoint_dir as a backup mirror:
+    !python train.py --config config.yaml \\
+        --gdrive_checkpoint_dir /content/drive/MyDrive/SAR2EO/checkpoints
 
 After training, download checkpoints/checkpoint_latest.pth (or a numbered
 checkpoint) and use infer.py locally.
 """
 
+import atexit
 import csv
 import json
 import os
+import shutil
+import signal
+import sys
 import argparse
 import platform
 
@@ -70,6 +83,17 @@ SAMPLE_EVERY      = 5
 CHECKPOINT_DIR    = "checkpoints"
 OUTPUT_DIR        = "outputs"
 
+# ── Colab-resilience settings ─────────────────────────────────────────────────
+# Google Drive path to mirror checkpoints so they survive Colab runtime restarts.
+# Set via CLI: --gdrive_checkpoint_dir /content/drive/MyDrive/SAR2EO/checkpoints
+# or in config.yaml:  gdrive_checkpoint_dir: "/content/drive/MyDrive/SAR2EO/checkpoints"
+# Leave as None (or omit from config) when NOT running on Colab.
+GDRIVE_CHECKPOINT_DIR   = None
+
+# Save an emergency in-epoch checkpoint every N batches.
+# Useful for very long epochs — 0 disables it.
+EMERGENCY_SAVE_EVERY_N  = 0
+
 NUM_WORKERS       = get_num_workers()
 DEVICE            = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -78,6 +102,10 @@ LOG_CSV            = os.path.join(OUTPUT_DIR, "training_log.csv")
 LOSS_CURVE         = os.path.join(OUTPUT_DIR, "loss_curve.png")
 SPLIT_CSV          = os.path.join(OUTPUT_DIR, "data_split.csv")
 TEST_METRICS_JSON  = os.path.join(OUTPUT_DIR, "test_metrics.json")
+
+# ── Runtime state used by the emergency-save handler ─────────────────────────
+# These are populated during training so the signal handler can flush them.
+_emergency_state: dict = {}   # filled in train() with live model/optimizer refs
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -92,6 +120,7 @@ def load_config():
     global CHECKPOINT_EVERY, SAMPLE_EVERY, CHECKPOINT_DIR, OUTPUT_DIR
     global NUM_WORKERS, DEVICE
     global LOG_CSV, LOSS_CURVE, SPLIT_CSV, TEST_METRICS_JSON
+    global GDRIVE_CHECKPOINT_DIR, EMERGENCY_SAVE_EVERY_N
 
     parser = argparse.ArgumentParser(description="Train Pix2Pix SAR-to-EO model")
     parser.add_argument("--config", type=str, default="config.yaml",
@@ -105,6 +134,9 @@ def load_config():
                         help="Override output_dir from config.")
     parser.add_argument("--checkpoint_dir",  type=str, default=None,
                         help="Override checkpoint_dir from config.")
+    parser.add_argument("--gdrive_checkpoint_dir", type=str, default=None,
+                        help="Google Drive path to mirror checkpoints for Colab resilience. "
+                             "Example: /content/drive/MyDrive/SAR2EO/checkpoints")
     args, _ = parser.parse_known_args()
 
     if not os.path.exists(args.config):
@@ -133,6 +165,8 @@ def load_config():
         SAMPLE_EVERY      = cfg.get("sample_every",      SAMPLE_EVERY)
         CHECKPOINT_DIR    = cfg.get("checkpoint_dir",    CHECKPOINT_DIR)
         OUTPUT_DIR        = cfg.get("output_dir",        OUTPUT_DIR)
+        GDRIVE_CHECKPOINT_DIR = cfg.get("gdrive_checkpoint_dir", GDRIVE_CHECKPOINT_DIR)
+        EMERGENCY_SAVE_EVERY_N = int(cfg.get("emergency_save_every_n_batches", EMERGENCY_SAVE_EVERY_N))
 
         # num_workers: "auto" or integer
         nw = cfg.get("num_workers", "auto")
@@ -153,6 +187,9 @@ def load_config():
     if args.checkpoint_dir is not None:
         CHECKPOINT_DIR = args.checkpoint_dir
         print(f"[Config] checkpoint_dir overridden via CLI -> {CHECKPOINT_DIR}")
+    if args.gdrive_checkpoint_dir is not None:
+        GDRIVE_CHECKPOINT_DIR = args.gdrive_checkpoint_dir
+        print(f"[Config] gdrive_checkpoint_dir overridden via CLI -> {GDRIVE_CHECKPOINT_DIR}")
 
     # Recompute derived paths now that OUTPUT_DIR is finalised
     LOG_CSV           = os.path.join(OUTPUT_DIR, "training_log.csv")
@@ -205,8 +242,35 @@ def build_splits(full_dataset: SAREODataset):
 # Checkpoint Helpers
 # ══════════════════════════════════════════════════════════════════════════════
 
-def save_checkpoint(gen, disc, opt_G, opt_D, epoch: int):
-    """Save numbered + latest checkpoints."""
+def _mirror_to_gdrive(src_path: str, label: str = "") -> None:
+    """
+    Copy *src_path* to GDRIVE_CHECKPOINT_DIR (if configured and reachable).
+    Silently skips if the Drive is not mounted or the copy fails.
+    """
+    if not GDRIVE_CHECKPOINT_DIR:
+        return
+    try:
+        os.makedirs(GDRIVE_CHECKPOINT_DIR, exist_ok=True)
+        dst = os.path.join(GDRIVE_CHECKPOINT_DIR, os.path.basename(src_path))
+        shutil.copy2(src_path, dst)
+        tag = f" [{label}]" if label else ""
+        print(f"  [GDrive{tag}] Mirrored -> {dst}")
+    except Exception as exc:
+        # Never crash training because Drive is slow / disconnected
+        print(f"  [GDrive] Warning: could not mirror {src_path}: {exc}")
+
+
+def save_checkpoint(gen, disc, opt_G, opt_D, epoch: int,
+                    extra_label: str = "") -> str:
+    """
+    Save numbered + latest checkpoints and mirror both to Google Drive.
+
+    Args:
+        extra_label: Optional suffix added to the filename (e.g. "_emergency").
+
+    Returns:
+        Path of the latest-checkpoint file that was written.
+    """
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     state = {
         "epoch":         epoch,
@@ -215,22 +279,93 @@ def save_checkpoint(gen, disc, opt_G, opt_D, epoch: int):
         "optimizer_G":   opt_G.state_dict(),
         "optimizer_D":   opt_D.state_dict(),
     }
-    if (epoch + 1) % CHECKPOINT_EVERY == 0:
-        path = os.path.join(CHECKPOINT_DIR, f"checkpoint_epoch_{epoch + 1:03d}.pth")
+
+    latest_path = os.path.join(CHECKPOINT_DIR, "checkpoint_latest.pth")
+    torch.save(state, latest_path)
+    _mirror_to_gdrive(latest_path, "latest")
+
+    if (epoch + 1) % CHECKPOINT_EVERY == 0 or extra_label:
+        suffix = extra_label if extra_label else ""
+        path = os.path.join(
+            CHECKPOINT_DIR,
+            f"checkpoint_epoch_{epoch + 1:03d}{suffix}.pth"
+        )
         torch.save(state, path)
         print(f"  [Checkpoint] Saved {path}")
-    torch.save(state, os.path.join(CHECKPOINT_DIR, "checkpoint_latest.pth"))
+        _mirror_to_gdrive(path)
+
+    return latest_path
+
+
+def emergency_save(signum=None, frame=None) -> None:
+    """
+    Called on SIGTERM (Colab disconnect / timeout) or via atexit.
+    Flushes the current model state to disk + Google Drive so training
+    can resume from the latest completed batch.
+    """
+    if not _emergency_state:
+        return   # train() hasn't started yet — nothing to save
+
+    gen    = _emergency_state.get("gen")
+    disc   = _emergency_state.get("disc")
+    opt_G  = _emergency_state.get("opt_G")
+    opt_D  = _emergency_state.get("opt_D")
+    epoch  = _emergency_state.get("epoch", 0)
+
+    if gen is None:
+        return
+
+    print("\n[Emergency] Disconnect/signal detected — saving checkpoint NOW...")
+    try:
+        save_checkpoint(gen, disc, opt_G, opt_D, epoch, extra_label="_emergency")
+        print("[Emergency] Checkpoint saved successfully.")
+    except Exception as exc:
+        print(f"[Emergency] Save failed: {exc}")
+
+    if signum is not None:
+        # Re-raise so the process exits cleanly
+        sys.exit(1)
+
+
+def _register_emergency_handlers() -> None:
+    """Register SIGTERM handler + atexit so emergency_save fires on disconnect."""
+    atexit.register(emergency_save)
+    try:
+        signal.signal(signal.SIGTERM, emergency_save)
+    except (OSError, ValueError):
+        pass   # SIGTERM not available on Windows — harmless
 
 
 def load_checkpoint(gen, disc, opt_G, opt_D) -> int:
-    """Load latest checkpoint if present. Returns start epoch (0 if no checkpoint)."""
-    path = os.path.join(CHECKPOINT_DIR, "checkpoint_latest.pth")
-    if not os.path.exists(path):
+    """
+    Load the latest checkpoint if present.
+
+    Search order:
+      1. CHECKPOINT_DIR/checkpoint_latest.pth  (local — fast)
+      2. GDRIVE_CHECKPOINT_DIR/checkpoint_latest.pth  (Drive fallback after
+         a Colab runtime restart that wiped /content/)
+
+    Returns:
+        start epoch (0 if no checkpoint found).
+    """
+    # Prefer local checkpoint
+    local_path = os.path.join(CHECKPOINT_DIR, "checkpoint_latest.pth")
+
+    # Fall back to Google Drive if local is missing
+    if not os.path.exists(local_path) and GDRIVE_CHECKPOINT_DIR:
+        drive_path = os.path.join(GDRIVE_CHECKPOINT_DIR, "checkpoint_latest.pth")
+        if os.path.exists(drive_path):
+            print(f"[Resume] Local checkpoint missing — restoring from Drive: {drive_path}")
+            os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+            shutil.copy2(drive_path, local_path)
+            print(f"[Resume] Copied Drive checkpoint -> {local_path}")
+
+    if not os.path.exists(local_path):
         print("[Resume] No checkpoint found — starting from scratch.")
         return 0
 
-    print(f"[Resume] Loading checkpoint: {path}")
-    state = torch.load(path, map_location=DEVICE, weights_only=False)
+    print(f"[Resume] Loading checkpoint: {local_path}")
+    state = torch.load(local_path, map_location=DEVICE, weights_only=False)
     gen.load_state_dict(state["generator"])
     disc.load_state_dict(state["discriminator"])
     opt_G.load_state_dict(state["optimizer_G"])
@@ -400,6 +535,7 @@ def evaluate_test_set(gen, test_loader: DataLoader):
 
 def train():
     set_seed(SEED)
+    _register_emergency_handlers()
 
     # ── Dataset ───────────────────────────────────────────────────────────────
     # Load without augmentation first (used for val/test subsets and split computation)
@@ -450,10 +586,26 @@ def train():
     start_epoch = load_checkpoint(gen, disc, opt_G, opt_D)
     init_csv()
 
+    # Populate the emergency-save state now that models exist
+    _emergency_state.update({
+        "gen":   gen,
+        "disc":  disc,
+        "opt_G": opt_G,
+        "opt_D": opt_D,
+        "epoch": start_epoch,
+    })
+
+    if GDRIVE_CHECKPOINT_DIR:
+        print(f"[Colab] Google Drive mirror: {GDRIVE_CHECKPOINT_DIR}")
+    if EMERGENCY_SAVE_EVERY_N > 0:
+        print(f"[Colab] In-epoch emergency save every {EMERGENCY_SAVE_EVERY_N} batches")
+
     history = []
 
     # ══════════════════════════════════════════════════════════════════════════
     for epoch in range(start_epoch, NUM_EPOCHS):
+        # Keep emergency state current so a mid-epoch signal saves this epoch
+        _emergency_state["epoch"] = epoch
 
         # ── TRAIN ─────────────────────────────────────────────────────────────
         gen.train(); disc.train()
@@ -464,7 +616,7 @@ def train():
                     desc=f"Epoch {epoch+1:>3}/{NUM_EPOCHS} [Train]",
                     leave=False, ncols=110)
 
-        for sar_batch, real_eo in pbar:
+        for batch_idx, (sar_batch, real_eo) in enumerate(pbar):
             if first_sar is None:
                 first_sar = sar_batch.clone()
                 first_gt  = real_eo.clone()
@@ -497,6 +649,18 @@ def train():
                 d=f"{d_loss.item():.4f}",
                 g=f"{g_total.item():.4f}",
             )
+
+            # ── In-epoch emergency save ────────────────────────────────────────
+            # Fires every EMERGENCY_SAVE_EVERY_N batches (0 = disabled).
+            # Saves a "_inepoch" checkpoint so a mid-epoch crash can be recovered.
+            if (EMERGENCY_SAVE_EVERY_N > 0
+                    and (batch_idx + 1) % EMERGENCY_SAVE_EVERY_N == 0):
+                save_checkpoint(gen, disc, opt_G, opt_D, epoch,
+                                extra_label="_inepoch")
+                tqdm.write(
+                    f"  [InEpoch] Emergency save at epoch {epoch+1}, "
+                    f"batch {batch_idx+1}/{len(train_loader)}"
+                )
 
         n = len(train_loader)
         avg_tr_g, avg_tr_l1, avg_tr_d = tr_g_total/n, tr_g_l1/n, tr_d/n

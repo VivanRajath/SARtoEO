@@ -40,9 +40,20 @@ ablation_log: true            # Also log the L1-only generator loss each epoch
 ngf: 64                       # base generator filter count  (8-level U-Net)
 ndf: 64                       # base discriminator filter count (PatchGAN)
 
-# ── Checkpointing ─────────────────────────────────────────────────────────────
+# ── Checkpointing ──────────────────────────────────────────────────────────────
 checkpoint_dir: "checkpoints"
 checkpoint_every: 5           # save a numbered checkpoint every N epochs
+
+# ── Colab resilience ────────────────────────────────────────────────────────────
+# Mirror every checkpoint to Google Drive so they survive a Colab runtime
+# restart that wipes /content/.  Leave blank when not running on Colab.
+# Example: "/content/drive/MyDrive/SAR2EO/checkpoints"
+gdrive_checkpoint_dir: ""     # leave empty locally; set in Colab
+
+# Save an in-epoch emergency checkpoint every N training batches.
+# Protects against loss of a full epoch on very large datasets.
+# 0 = disabled (default, adds no overhead).
+emergency_save_every_n_batches: 0
 
 # ── Output ───────────────────────────────────────────────────────────────────
 output_dir: "outputs"
