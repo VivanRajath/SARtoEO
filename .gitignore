@@ -40,3 +40,8 @@ outputs/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ── Temporary & Submission Files ──────────────────────────────────────────────
+GT/
+*.zip
+
