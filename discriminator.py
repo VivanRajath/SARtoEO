@@ -1,24 +1,9 @@
-"""
-discriminator.py — PatchGAN Discriminator (Isola et al., 2017).
-
-Architecture:
-  Input: SAR (1ch) concatenated with EO (3ch) → 4-channel input
-  Four DiscriminatorBlocks of increasing filters
-  Final Conv2d → patch-wise real/fake score map
-
-  The PatchGAN classifies overlapping 70×70 patches as real/fake, not the
-  whole image. This encourages high-frequency texture realism.
-
-Args:
-    in_channels: Total input channels = SAR channels + EO channels (default 4 = 1+3).
-    ndf:         Base number of discriminator filters (default 64).
-"""
 
 import torch
 import torch.nn as nn
 
 
-# ── Building Block ─────────────────────────────────────────────────────────────
+# Building Block
 
 class DiscriminatorBlock(nn.Module):
     """
@@ -39,7 +24,7 @@ class DiscriminatorBlock(nn.Module):
         return self.block(x)
 
 
-# ── Discriminator ──────────────────────────────────────────────────────────────
+# Discriminator
 
 class Discriminator(nn.Module):
     """

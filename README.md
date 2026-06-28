@@ -2,7 +2,17 @@
 
 > **GalaxEye Space — Technical Assignment | AI Research Intern**
 
-A **Conditional Generative Adversarial Network (Pix2Pix)** that translates single-channel Sentinel-1 SAR imagery into Sentinel-2 RGB Electro-Optical images. SAR sensors image Earth through clouds and darkness, but produce grayscale, texture-heavy outputs with no colour information. This project addresses the inherently ill-posed problem of hallucinating perceptually realistic optical imagery from radar backscatter.
+A **Conditional Generative Adversarial Network (Pix2Pix)** that translates single-channel Sentinel-1 SAR imagery
+into Sentinel-2 RGB Electro-Optical images. SAR sensors image Earth through clouds and darkness, but produce
+grayscale, speckle-heavy outputs with no colour information. This project addresses the inherently ill-posed
+problem of hallucinating perceptually realistic optical imagery from radar backscatter.
+
+| Resource | Link |
+|----------|------|
+| Model Weights | [HuggingFace — VivanRajath/SAR2EO](https://huggingface.co/VivanRajath/SAR2EO) |
+| Technical Report | [Technical_Report.pdf](Technical_Report.pdf) |
+| Architecture Deep-Dive | [architecture.md](architecture.md) |
+| Operational Runbook | [RUNBOOK.md](RUNBOOK.md) |
 
 ---
 
@@ -26,78 +36,76 @@ A **Conditional Generative Adversarial Network (Pix2Pix)** that translates singl
 Given a 256×256 Sentinel-1 VV SAR image, generate the corresponding Sentinel-2 RGB optical image.
 
 ### Approach
-We implement **Pix2Pix** — a conditional GAN where a U-Net generator produces EO images conditioned on SAR input, supervised by a PatchGAN discriminator that classifies overlapping 70×70 patches as real or fake.
+We implement **Pix2Pix** — a conditional GAN where a U-Net generator produces EO images conditioned on SAR input,
+supervised by a PatchGAN discriminator that classifies overlapping 70×70 patches as real or fake.
 
 **Why Pix2Pix?**
 - Pixel-aligned paired training data is available (Sentinel-1/2 co-registered)
 - L1 loss enforces global structure; GAN loss enforces local texture realism
 - PatchGAN is computationally efficient and captures high-frequency detail
+- Fast inference: single forward pass, no iterative denoising (unlike diffusion)
+- Well within the 16GB VRAM limit (uses <3GB at batch size 2)
 
-### Architecture
+For the full technical rationale comparing Pix2Pix vs CycleGAN vs Diffusion Models, see [architecture.md](architecture.md).
+
+### Architecture Overview
 
 ```
-SAR Input [1×256×256]
-       │
-  ┌────▼──────────────────────────── U-Net Encoder ────────────────────────────────┐
-  │  e1: 1→64   e2: 64→128   e3: 128→256   e4: 256→512   e5→e7: 512→512          │
-  └────────────────────────────────────────────────────────── Bottleneck: 512→512 ──┘
-                                   (1×1 global context)
-  ┌────────────────────────────── U-Net Decoder (with skip connections) ────────────┐
-  │  d7: 512+512→512  d6: →512  d5: →512  d4: →512  d3: →256  d2: →128  d1: →64  │
-  └──────────────────────────────────────── final: 128→3 ch + Tanh ────────────────┘
-                                       │
-                               EO Output [3×256×256]
-                             (values in [-1, 1] → de-normalize → [0, 1] PNG)
+SAR Input [1x256x256]
+       |
+  +----v---------- U-Net Encoder (7 levels) -----------+
+  | e1:1->64  e2:64->128  e3:128->256  e4-e7:256->512  |
+  +--------------------------------- Bottleneck: 512->512 (1x1)
+  +-------- U-Net Decoder with Skip Connections --------+
+  | d7:512+512->512  ...  d1:256+64->64  final:128->3   |
+  +---------------------------------------+
+                                          |
+                              EO Output [3x256x256]
+                         (Tanh output -> denorm -> [0,1] PNG)
 ```
 
-**Generator**: 8-level U-Net (standard Pix2Pix, Isola et al. 2017) — 7 encoder stages + bottleneck + 7 decoder stages, skip connections preserve spatial detail.
+**Generator**: 8-level U-Net — 7 encoder stages + bottleneck + 7 decoder stages, ~54M parameters.
+Skip connections preserve spatial detail across the bottleneck.
 
-**Discriminator**: 70×70 PatchGAN — classifies overlapping patches rather than the whole image, encouraging high-frequency texture realism.
+**Discriminator**: 70×70 PatchGAN — classifies 70x70 pixel patches as real/fake, not the whole image.
+~2.8M parameters. Conditioned on SAR input to enforce cross-modal consistency.
 
 **Loss**:
 ```
-G_loss = GAN_loss(D(SAR, fake_EO), real) + λ × L1(fake_EO, real_EO)
-D_loss = [GAN_loss(D(SAR, real_EO), real) + GAN_loss(D(SAR, fake_EO), fake)] / 2
-
-λ = 100  (paper default)
+G_loss = BCE(D(SAR, fake_EO), real) + 100 * L1(fake_EO, real_EO)
+D_loss = [BCE(D(SAR, real_EO), real) + BCE(D(SAR, fake_EO), fake)] / 2
 ```
 
 ### Dataset Selection
-We use the **Sentinel-1 & Sentinel-2 Terrain-Separated Image Pairs (Kaggle)** dataset, specifically the **agricultural subset** (`data/agri/`). This subset was chosen because:
-- Agricultural areas have characteristic SAR textures (field boundaries, furrow patterns) that map consistently to optical colour
-- The terrain-separated split avoids geographic leakage between train/val/test
-- Subset size is manageable for resource-constrained training
+We use the **Sentinel-1 & Sentinel-2 Terrain-Separated Image Pairs (Kaggle)** dataset, specifically the
+**agricultural subset** (`data/agri/`). Agricultural regions were chosen because:
+- Distinct SAR textures (field boundaries, furrow patterns, irrigation circles) map consistently to optical colour
+- Terrain-separated split minimises geographic leakage between train/val/test
+- Subset (4,000 pairs) is manageable for resource-constrained environments
 
-**Preprocessing**:
-- SAR images: assumed dB-scaled and normalised to [0, 255] by the dataset; `ToTensor()` maps to [0, 1]
-- EO images: `ToTensor()` maps to [0, 1], then `Normalize(0.5, 0.5)` maps to [-1, 1] to match the generator's Tanh output range
-- All images auto-resized to 256×256 (antialias bilinear)
-
-**Split**: 70 / 15 / 15 (train / val / test) — reproducible random split seeded at 42, indices saved to `outputs/data_split.csv`.
+**Split**: 70/15/15 (train/val/test) — reproducible random split seeded at 42.
+Indices saved to `outputs/data_split.csv`.
 
 ### Repository Structure
 
 ```
 SAR2EO/
-├── data/
-│   └── agri/
-│       ├── s1/              ← Sentinel-1 VV SAR patches (256×256 grayscale PNG)
-│       └── s2/              ← Sentinel-2 RGB EO patches (256×256 RGB PNG)
-│
-├── checkpoints/             ← Saved model checkpoints (.pth)
-├── outputs/                 ← Training logs, loss curves, samples, eval results
-│
-├── dataset.py               ← Robust SAR/EO paired dataset loader
-├── generator.py             ← 8-level Pix2Pix U-Net generator
-├── discriminator.py         ← 70×70 PatchGAN discriminator
-├── train.py                 ← Training script (3-way split, ablation log, CSV/PNG output)
-├── infer.py                 ← CLI inference (GalaxEye spec-compliant)
-├── eval.py                  ← Evaluation: LPIPS, FID, SSIM, PSNR
-├── utils.py                 ← Shared helpers (denormalize, triplet grid, seed, etc.)
-│
-├── config.yaml              ← All hyperparameters and paths
-├── requirements.txt         ← Pinned Python dependencies
-└── README.md
+|-- data/agri/s1/         <- SAR input (Sentinel-1 VV, grayscale PNG, 256x256)
+|-- data/agri/s2/         <- EO target (Sentinel-2 RGB PNG, 256x256)
+|-- checkpoints/          <- Saved model checkpoints (.pth)
+|-- outputs/              <- Training logs, loss curves, samples, eval results
+|-- train.py              <- Training script (ablation log, CSV/PNG output)
+|-- infer.py              <- CLI inference (GalaxEye spec-compliant)
+|-- eval.py               <- Evaluation: LPIPS, FID, SSIM, PSNR
+|-- generator.py          <- 8-level Pix2Pix U-Net generator
+|-- discriminator.py      <- 70x70 PatchGAN discriminator
+|-- dataset.py            <- Robust SAR/EO paired dataset loader
+|-- utils.py              <- Shared helpers
+|-- config.yaml           <- All hyperparameters and paths
+|-- requirements.txt      <- Pinned Python dependencies
+|-- architecture.md       <- Deep-dive: pipeline, filters, eval methodology
+|-- RUNBOOK.md            <- Step-by-step guide for all workflows
++-- Technical_Report.pdf  <- Formal 7-page technical report
 ```
 
 ---
@@ -108,27 +116,28 @@ SAR2EO/
 
 | Package | Min Version | Purpose |
 |---|---|---|
-| `torch` | ≥ 2.2.0 | Deep learning framework |
-| `torchvision` | ≥ 0.17.0 | Image transforms, save_image |
-| `numpy` | ≥ 1.24.0 | Array operations |
-| `Pillow` | ≥ 10.0.0 | Image I/O |
-| `matplotlib` | ≥ 3.8.0 | Loss curve plots |
-| `tqdm` | ≥ 4.66.0 | Progress bars |
-| `PyYAML` | ≥ 6.0.1 | Config file parsing |
-| `scikit-image` | ≥ 0.22.0 | SSIM and PSNR metrics |
-| `lpips` | ≥ 0.1.4 | Perceptual image similarity |
-| `pytorch-fid` | ≥ 0.3.0 | Fréchet Inception Distance |
-| `opencv-python` | ≥ 4.9.0 | Optional image utilities |
+| `torch` | >= 2.2.0 | Deep learning framework |
+| `torchvision` | >= 0.17.0 | Image transforms, save_image |
+| `numpy` | >= 1.24.0 | Array operations |
+| `Pillow` | >= 10.0.0 | Image I/O |
+| `matplotlib` | >= 3.8.0 | Loss curve plots |
+| `tqdm` | >= 4.66.0 | Progress bars |
+| `PyYAML` | >= 6.0.1 | Config file parsing |
+| `scikit-image` | >= 0.22.0 | SSIM and PSNR metrics |
+| `lpips` | >= 0.1.4 | Learned perceptual image patch similarity |
+| `pytorch-fid` | >= 0.3.0 | Frechet Inception Distance |
+| `opencv-python` | >= 4.9.0 | Optional image utilities |
+| `reportlab` | >= 4.0.0 | PDF report generation |
 
 ---
 
 ## 3. Environment Setup
 
-### Local (VSCode / Windows / Linux)
+### Local (Windows / Linux / macOS)
 
 ```bash
 # 1. Clone the repository
-git clone <your-repository-url>
+git clone https://github.com/VivanRajath/SARtoEO.git
 cd SAR2EO
 
 # 2. Create and activate a virtual environment
@@ -150,69 +159,55 @@ pip install -r requirements.txt
 
 ### Google Colab (Training)
 
-For Google Colab training, we have implemented CLI overrides so you never need to manually edit `config.yaml` on the server. You can run training and stream checkpoints directly to your Google Drive to prevent losing progress if your Colab session times out.
+For Colab training, use CLI overrides to redirect checkpoints to Google Drive:
 
 ```python
-# Cell 1 — Mount Google Drive
+# Mount Drive
 from google.colab import drive
 drive.mount('/content/drive')
 
-# Cell 2 — Clone the repository to the fast local disk
-# (Cloning to local /content is faster for training execution than running out of Google Drive mount)
+# Clone repo
 %cd /content
 !git clone https://github.com/VivanRajath/SARtoEO.git
 %cd SARtoEO
-
-# Cell 3 — Install dependencies
 !pip install -q -r requirements.txt
 
-# Cell 4 — Train the model using CLI overrides
-#
-# Replace the paths below with the actual paths in your Google Drive:
-#  - --dataset_path: The folder containing your s1/ and s2/ datasets in Drive
-#  - --checkpoint_dir: A folder in your Google Drive to save checkpoints (ensures no data loss)
-#  - --output_dir: A folder in your Google Drive to save logs, curves, and sample images
-#
+# Train with Drive checkpointing
 !python train.py --config config.yaml \
-    --dataset_path "/content/drive/MyDrive/path/to/your/dataset/agri" \
+    --dataset_path "/content/drive/MyDrive/SAR2EO/data/agri" \
     --checkpoint_dir "/content/drive/MyDrive/SAR2EO/checkpoints" \
     --output_dir "/content/drive/MyDrive/SAR2EO/outputs"
 ```
 
-#### Why use CLI Overrides?
-1. **No Config Edits**: You don't have to edit `config.yaml` on Colab or commit machine-specific paths to Git.
-2. **Drive Persistence**: Checkpoints and output logs are written directly to Google Drive in real-time. If Colab disconnects, your weights are safely stored.
-3. **Faster I/O**: Cloning the code to local `/content` while keeping the heavy dataset/checkpoints on Drive offers the best balance of training speed and data persistence.
-
-**After training completes**, download the checkpoint from your Google Drive folder, place it in your local `checkpoints/` folder, and run local inference or evaluation.
+See [RUNBOOK.md#9-google-colab-workflow](RUNBOOK.md) for complete Colab instructions.
 
 ---
 
 ## 4. Dataset Structure
 
-The pipeline expects this layout (subfolder names are case-insensitive — `s1`, `S1`, `sar` all work):
+The pipeline expects this layout:
 
 ```
 data/
-└── agri/
-    ├── s1/
-    │   ├── patch_001_s1_agri.png
-    │   ├── patch_002_s1_agri.png
-    │   └── ...
-    └── s2/
-        ├── patch_001_s2_agri.png
-        ├── patch_002_s2_agri.png
-        └── ...
++-- agri/
+    |-- s1/
+    |   |-- patch_001_s1_agri.png
+    |   |-- patch_002_s1_agri.png
+    |   +-- ...
+    +-- s2/
+        |-- patch_001_s2_agri.png
+        |-- patch_002_s2_agri.png
+        +-- ...
 ```
 
 **Pairing rules** (tried in order):
-1. Replace `_s1_` → `_s2_` in the filename (Kaggle convention)
-2. Replace `s1` → `s2` anywhere in the filename
+1. Replace `_s1_` with `_s2_` in filename (Kaggle convention)
+2. Replace `s1` with `s2` anywhere in filename
 3. Identical filenames (SEN1-2 / SEN12MS convention)
 
 **Supported formats**: `.png`, `.jpg`, `.tif`, `.tiff`
 
-**Any resolution is accepted** — images are auto-resized to 256×256 during loading.
+**Any resolution accepted** — images auto-resized to 256×256 during loading.
 
 ---
 
@@ -221,9 +216,6 @@ data/
 ```bash
 # Standard training (reads all settings from config.yaml)
 python train.py --config config.yaml
-
-# Custom config file
-python train.py --config my_config.yaml
 ```
 
 **Training produces:**
@@ -231,29 +223,33 @@ python train.py --config my_config.yaml
 | File | Description |
 |---|---|
 | `checkpoints/checkpoint_latest.pth` | Always-up-to-date checkpoint (use for inference) |
-| `checkpoints/checkpoint_epoch_NNN.pth` | Numbered checkpoint every `checkpoint_every` epochs |
-| `outputs/training_log.csv` | Per-epoch: G(total), G(L1-only), D losses for train + val |
-| `outputs/loss_curve.png` | 3-panel loss curve (ablation + discriminator + decomposition) |
+| `checkpoints/checkpoint_epoch_NNN.pth` | Numbered checkpoint every N epochs |
+| `outputs/training_log.csv` | Per-epoch: G(total), G(L1-only), D losses for train+val |
+| `outputs/loss_curve.png` | 3-panel loss curve (ablation + discriminator) |
 | `outputs/data_split.csv` | Exact train/val/test indices for reproducibility |
-| `outputs/sample_epoch_NNN.png` | SAR \| Generated EO \| Ground Truth triplet (every N epochs) |
-| `outputs/test_example_01..05.png` | 5 qualitative triplets from the held-out test set |
-| `outputs/test_metrics.json` | Test-set L1 loss (run eval.py for full LPIPS/FID/SSIM/PSNR) |
+| `outputs/sample_epoch_NNN.png` | SAR | Generated EO | GT triplet every N epochs |
+| `outputs/test_example_01..05.png` | 5 qualitative triplets from test split |
+| `outputs/test_metrics.json` | Test-set L1 loss |
 
 **Key config options** (`config.yaml`):
 
 ```yaml
-num_epochs: 100         # increase for better quality
-batch_size: 2           # increase if you have more VRAM (4 on 16GB GPU)
-lambda_l1: 100          # higher = more faithful to structure, less creative
+num_epochs: 50          # increase to 100-200 for better quality
+batch_size: 2           # increase if you have more VRAM
+lambda_l1: 100          # higher = more structurally faithful
 augment: true           # random flips during training
-ablation_log: true      # log L1-only loss alongside GAN+L1 for comparison
+ablation_log: true      # log L1-only loss alongside GAN+L1
 ```
+
+> **Note on training duration**: 50 epochs was used for this submission. The model is still
+> learning at epoch 50 — extending to 100-200 epochs will further improve all metrics.
+> See [architecture.md#11-training-epochs-and-convergence](architecture.md) for details.
 
 ---
 
 ## 6. Inference Command
 
-**Exact CLI required by the GalaxEye assessment:**
+**CLI required by the GalaxEye assessment:**
 
 ```bash
 python infer.py \
@@ -280,10 +276,7 @@ python infer.py \
 | `--image_size` | 256 | Generator internal resolution |
 | `--device` | auto | `cuda`, `cpu`, or `auto` |
 
-**Notes:**
-- Input images can be any resolution — they are auto-resized internally and the output is returned to the original size
-- Output filenames match input filenames exactly (`.png` extension enforced)
-- Works with CPU only (no GPU required for inference)
+For custom single-image inference and preprocessing, see [RUNBOOK.md#6-custom-single-image-inference](RUNBOOK.md).
 
 ---
 
@@ -293,15 +286,9 @@ After running inference, compute metrics against ground-truth:
 
 ```bash
 python eval.py \
-    --pred_dir generated_eo/ \
-    --gt_dir   data/agri/s2/
-```
-
-**With JSON output:**
-```bash
-python eval.py \
     --pred_dir    generated_eo/ \
     --gt_dir      data/agri/s2/ \
+    --split_csv   outputs/data_split.csv \
     --output_csv  outputs/eval_results.csv \
     --output_json outputs/eval_results.json
 ```
@@ -309,20 +296,20 @@ python eval.py \
 **Outputs:**
 - Per-image SSIM, PSNR, LPIPS printed to terminal and saved to CSV
 - FID computed over the full directory
-- `outputs/eval_results.json` — aggregate metrics for documentation
+- `outputs/eval_results.json` — aggregate metrics
 
 ---
 
 ## 8. Model Weights
 
-Download the trained generator checkpoint:
+Download the trained generator checkpoint from HuggingFace:
 
-> **Weights Download Link**: *(Add Google Drive / HuggingFace link here after training)*
+> **Weights**: [https://huggingface.co/VivanRajath/SAR2EO](https://huggingface.co/VivanRajath/SAR2EO)
 
 Place the downloaded `.pth` file in the `checkpoints/` directory:
 ```
 checkpoints/
-└── checkpoint_latest.pth   ← place downloaded weights here
++-- checkpoint_latest.pth   <- place downloaded weights here
 ```
 
 Then run inference as described in [Section 6](#6-inference-command).
@@ -331,14 +318,22 @@ Then run inference as described in [Section 6](#6-inference-command).
 
 ## 9. Results
 
-### Quantitative Metrics
+### Quantitative Metrics (600 Test Images, Held-Out Split)
 
-| Split | LPIPS ↓ | FID ↓ | SSIM ↑ | PSNR ↑ (dB) |
+| Split | LPIPS (lower better) | FID (lower better) | SSIM (higher better) | PSNR dB (higher better) |
 |---|---|---|---|---|
-| **Validation** | TBD | TBD | TBD | TBD |
-| **Test** | TBD | TBD | TBD | TBD |
+| **Test (n=600)** | **0.4613** | **176.73** | **0.2725** | **15.46** |
 
-*Metrics will be populated after full training run. Run `eval.py` on the generated outputs.*
+*Metrics computed on 600 held-out test images using `eval.py`. Run `eval.py --pred_dir outputs/test_pred --gt_dir data/agri/s2 --split_csv outputs/data_split.csv` to verify.*
+
+### Metric Interpretation
+- **LPIPS 0.4613**: Moderate perceptual distance — model captures broad structure but misses some fine texture
+- **FID 176.73**: Well below random (~300-400+); generated images are statistically EO-like
+- **SSIM 0.2725**: Penalised by colour hallucination (correct field layout, wrong hue)
+- **PSNR 15.46 dB**: Expected for cross-modal synthesis; compare to compression (PSNR >30 dB)
+
+For detailed analysis including success cases, failure modes, and why these scores are expected for
+this ill-posed task, see [Technical_Report.pdf](Technical_Report.pdf).
 
 ### Qualitative Examples
 
@@ -348,7 +343,8 @@ After training, qualitative triplet comparisons (SAR Input | Generated EO | Grou
 
 ### Loss Curves
 
-Training and validation loss curves (including ablation comparison: GAN+L1 vs L1-only) are saved to `outputs/loss_curve.png`.
+Training and validation loss curves (including ablation comparison: GAN+L1 vs L1-only) are saved to
+`outputs/loss_curve.png`.
 
 ---
 
@@ -358,10 +354,12 @@ Training and validation loss curves (including ablation comparison: GAN+L1 vs L1
 
 2. **SEN1-2 Dataset**: Schmitt, M., Hughes, L. H., & Zhu, X. X. (2018). SEN1-2: A Dataset for Deep Learning in SAR-Optical Data Fusion. *ISPRS Annals*. [[Dataset]](https://mediatum.ub.tum.de/1474000)
 
-3. **SEN12MS Dataset**: Schmitt, M., Hughes, L. H., Qiu, C., & Zhu, X. X. (2019). SEN12MS — A Curated Dataset of Georeferenced Multi-Spectral Sentinel-1/2 Imagery for Deep Learning and Data Fusion. *ISPRS Annals*. [[Dataset]](https://mediatum.ub.tum.de/1474000)
+3. **SEN12MS Dataset**: Schmitt, M., Hughes, L. H., Qiu, C., & Zhu, X. X. (2019). SEN12MS — A Curated Dataset of Georeferenced Multi-Spectral Sentinel-1/2 Imagery. *ISPRS Annals*. [[Dataset]](https://mediatum.ub.tum.de/1474000)
 
-4. **Kaggle Sentinel-1/2 Pairs**: Sentinel-1 & Sentinel-2 Image Pairs (Terrain-Separated). [[Dataset]](https://www.kaggle.com/datasets) — Agricultural subset used in this work.
+4. **Kaggle Sentinel-1/2 Pairs**: Sentinel-1 & Sentinel-2 Image Pairs (Terrain-Separated). [[Dataset]](https://www.kaggle.com/datasets)
 
 5. **U-Net**: Ronneberger, O., Fischer, P., & Brox, T. (2015). U-Net: Convolutional Networks for Biomedical Image Segmentation. *MICCAI*. [[Paper]](https://arxiv.org/abs/1505.04597)
 
 6. **LPIPS**: Zhang, R., Isola, P., Efros, A. A., Shechtman, E., & Wang, O. (2018). The Unreasonable Effectiveness of Deep Features as a Perceptual Metric. *CVPR*. [[Paper]](https://arxiv.org/abs/1801.03924)
+
+7. **FID**: Heusel, M., Ramsauer, H., Unterthiner, T., Nessler, B., & Hochreiter, S. (2017). GANs Trained by a Two Time-Scale Update Rule Converge to a Local Nash Equilibrium. *NeurIPS*. [[Paper]](https://arxiv.org/abs/1706.08500)

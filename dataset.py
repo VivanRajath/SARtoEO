@@ -1,16 +1,4 @@
-"""
-dataset.py — Robust SAR / EO paired image dataset.
 
-Features:
-  - Case-agnostic subfolder discovery (S1/, s1/, sar/, SAR/, etc.)
-  - Multi-strategy filename pairing (_s1_/_s2_, s1/s2 swap, or identical names)
-  - Any image format: .png, .jpg, .tif, .tiff
-  - Any input resolution: auto-resizes to `image_size × image_size`
-  - Augmentation: random horizontal + vertical flip applied identically to the pair
-  - Normalization:
-      SAR → [0, 1]    via ToTensor
-      EO  → [-1, 1]   via Normalize(0.5, 0.5)   (matches generator Tanh output)
-"""
 
 import os
 import random
@@ -57,11 +45,11 @@ class SAREODataset(Dataset):
         self.image_size = image_size
         self.augment    = augment
 
-        # ── Discover SAR and EO directories ───────────────────────────────────
+        # Discover SAR and EO directories
         self.sar_dir = find_subdir(root_dir, _SAR_CANDIDATES)
         self.eo_dir  = find_subdir(root_dir, _EO_CANDIDATES)
 
-        # ── Collect all SAR files ──────────────────────────────────────────────
+        # Collect all SAR files
         self.sar_files = sorted([
             f for f in os.listdir(self.sar_dir)
             if os.path.splitext(f)[1].lower() in _VALID_EXTS
@@ -73,20 +61,20 @@ class SAREODataset(Dataset):
                 f"  {self.sar_dir}"
             )
 
-        # ── Build EO filename lookup set ───────────────────────────────────────
+        # Build EO filename lookup set
         self._eo_lookup = {
             f for f in os.listdir(self.eo_dir)
             if os.path.splitext(f)[1].lower() in _VALID_EXTS
         }
 
-        # ── Shared resize transform ────────────────────────────────────────────
+        # Shared resize transform
         self._resize = transforms.Resize(
             (image_size, image_size),
             interpolation=transforms.InterpolationMode.BILINEAR,
             antialias=True,
         )
 
-    # ── Internal helpers ───────────────────────────────────────────────────────
+    # Internal helpers
 
     def _get_eo_filename(self, sar_filename: str) -> str:
         """
@@ -114,7 +102,7 @@ class SAREODataset(Dataset):
             f"  EO directory: {self.eo_dir}"
         )
 
-    # ── Dataset interface ──────────────────────────────────────────────────────
+    # Dataset interface
 
     def __len__(self) -> int:
         return len(self.sar_files)
@@ -134,7 +122,7 @@ class SAREODataset(Dataset):
         sar_img = self._resize(sar_img)
         eo_img  = self._resize(eo_img)
 
-        # ── Augmentation ──────────────────────────────────────────────────────
+        # Augmentation
         # CRITICAL: same random state applied to both images to preserve alignment
         if self.augment:
             if random.random() > 0.5:
@@ -144,7 +132,7 @@ class SAREODataset(Dataset):
                 sar_img = TF.vflip(sar_img)
                 eo_img  = TF.vflip(eo_img)
 
-        # ── Normalisation ──────────────────────────────────────────────────────
+        # Normalisation
         # SAR:  PIL [0,255] → Tensor [0.0, 1.0]
         sar_tensor = TF.to_tensor(sar_img)
 

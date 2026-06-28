@@ -1,8 +1,4 @@
-"""
-utils.py — Shared helper utilities for the SAR-to-EO pipeline.
 
-Used by: dataset.py, train.py, infer.py, eval.py
-"""
 
 import os
 import platform
@@ -14,7 +10,7 @@ import torchvision.transforms.functional as TF
 from torchvision.utils import save_image
 
 
-# ── Folder Discovery ───────────────────────────────────────────────────────────
+# Folder Discovery
 
 def find_subdir(root: str, candidates: list) -> str:
     """
@@ -52,7 +48,7 @@ def find_subdir(root: str, candidates: list) -> str:
     )
 
 
-# ── Reproducibility ────────────────────────────────────────────────────────────
+# Reproducibility
 
 def set_seed(seed: int):
     """
@@ -66,7 +62,7 @@ def set_seed(seed: int):
         torch.cuda.manual_seed_all(seed)
 
 
-# ── Tensor Utilities ───────────────────────────────────────────────────────────
+# Tensor Utilities
 
 def denormalize(tensor: torch.Tensor) -> torch.Tensor:
     """
@@ -84,7 +80,7 @@ def denormalize(tensor: torch.Tensor) -> torch.Tensor:
     return (tensor.clamp(-1.0, 1.0) + 1.0) / 2.0
 
 
-# ── Qualitative Visualisation ──────────────────────────────────────────────────
+# Qualitative Visualisation
 
 def save_triplet_grid(
     sar_tensor:  torch.Tensor,
@@ -121,7 +117,7 @@ def save_triplet_grid(
     save_image(grid, out_path, normalize=False)
 
 
-# ── DataLoader Workers ─────────────────────────────────────────────────────────
+# DataLoader Workers
 
 def get_num_workers() -> int:
     """

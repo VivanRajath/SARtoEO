@@ -1,22 +1,4 @@
-"""
-eval.py — Evaluation script for SAR-to-EO image translation.
 
-Computes all four metrics required by the GalaxEye assessment:
-    Primary   (ranking): LPIPS ↓, FID ↓
-    Secondary (quality): SSIM ↑, PSNR ↑
-
-Usage:
-    python eval.py --pred_dir <generated_eo_dir> --gt_dir <ground_truth_dir>
-
-Optional flags:
-    --output_csv   Path for per-image CSV results (default: outputs/eval_results.csv)
-    --output_json  Path for aggregate JSON results (default: outputs/eval_results.json)
-    --split_csv    outputs/data_split.csv — if provided, evaluates only 'test' split files
-    --device       cuda | cpu | auto
-
-Dependencies (all in requirements.txt):
-    lpips, pytorch-fid, scikit-image
-"""
 
 import argparse
 import csv
@@ -29,7 +11,7 @@ import torch
 from PIL import Image
 from torchvision import transforms
 
-# ── Graceful optional imports ──────────────────────────────────────────────────
+# Graceful optional imports
 
 try:
     import lpips as lpips_lib
@@ -68,7 +50,7 @@ except ImportError:
     print("[Warning] pytorch-fid not installed — run: pip install pytorch-fid")
 
 
-# ── Argument Parser ────────────────────────────────────────────────────────────
+# Argument Parser
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -91,7 +73,7 @@ def parse_args():
     return parser.parse_args()
 
 
-# ── Image Utilities ────────────────────────────────────────────────────────────
+# Image Utilities
 
 def load_image_np(path: str) -> np.ndarray:
     """Load image as uint8 NumPy array [H, W, 3]."""
@@ -106,7 +88,7 @@ def load_image_tensor(path: str, device: torch.device) -> torch.Tensor:
     return t.unsqueeze(0).to(device)
 
 
-# ── File Matching ──────────────────────────────────────────────────────────────
+# File Matching
 
 def match_files(pred_dir: str, gt_dir: str, split_csv: str = None):
     """
@@ -171,7 +153,7 @@ def match_files(pred_dir: str, gt_dir: str, split_csv: str = None):
     return pairs
 
 
-# ── Metric Computation ─────────────────────────────────────────────────────────
+# Metric Computation
 
 def compute_metrics(pred_dir: str, gt_dir: str, device: torch.device,
                     output_csv: str, output_json: str, split_csv: str = None):
@@ -201,7 +183,7 @@ def compute_metrics(pred_dir: str, gt_dir: str, device: torch.device,
         pred_np  = load_image_np(pred_path)
         gt_np    = load_image_np(gt_path)
 
-        # ── SSIM ──────────────────────────────────────────────────────────────
+        # SSIM
         ssim_val = float("nan")
         if SKIMAGE_AVAILABLE:
             ssim_val = ssim_fn(
@@ -211,13 +193,13 @@ def compute_metrics(pred_dir: str, gt_dir: str, device: torch.device,
             )
             ssim_scores.append(ssim_val)
 
-        # ── PSNR ──────────────────────────────────────────────────────────────
+        # PSNR
         psnr_val = float("nan")
         if SKIMAGE_AVAILABLE:
             psnr_val = psnr_fn(gt_np, pred_np, data_range=255)
             psnr_scores.append(psnr_val)
 
-        # ── LPIPS ─────────────────────────────────────────────────────────────
+        # LPIPS
         lpips_val = float("nan")
         if LPIPS_AVAILABLE and lpips_model is not None:
             pred_t = load_image_tensor(pred_path, device)
@@ -234,7 +216,7 @@ def compute_metrics(pred_dir: str, gt_dir: str, device: torch.device,
             "lpips":    lpips_val,
         })
 
-    # ── FID (whole-directory) ──────────────────────────────────────────────────
+    # FID (whole-directory)
     fid_val = float("nan")
     if FID_AVAILABLE:
         print("\nComputing FID (may take a moment) ...")
@@ -248,7 +230,7 @@ def compute_metrics(pred_dir: str, gt_dir: str, device: torch.device,
         except Exception as e:
             print(f"[Warning] FID computation failed: {e}")
 
-    # ── Aggregates ─────────────────────────────────────────────────────────────
+    # Aggregates
     mean_ssim  = float(np.mean(ssim_scores))  if ssim_scores  else float("nan")
     mean_psnr  = float(np.mean(psnr_scores))  if psnr_scores  else float("nan")
     mean_lpips = float(np.mean(lpips_scores)) if lpips_scores else float("nan")
@@ -263,7 +245,7 @@ def compute_metrics(pred_dir: str, gt_dir: str, device: torch.device,
     print(f"  FID   (-)        : {fid_val:.2f}" if not np.isnan(fid_val) else "  FID   (-)        : N/A")
     print("=" * 60)
 
-    # ── Save CSV ───────────────────────────────────────────────────────────────
+    # Save CSV
     os.makedirs(os.path.dirname(output_csv) or ".", exist_ok=True)
     with open(output_csv, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["filename", "ssim", "psnr", "lpips"])
@@ -275,7 +257,7 @@ def compute_metrics(pred_dir: str, gt_dir: str, device: torch.device,
                          "psnr": "",                   "lpips": f"{fid_val:.4f}"})
     print(f"\n  CSV  -> {output_csv}")
 
-    # ── Save JSON ──────────────────────────────────────────────────────────────
+    # Save JSON
     os.makedirs(os.path.dirname(output_json) or ".", exist_ok=True)
     aggregate = {
         "n_images": len(pairs),
@@ -291,7 +273,7 @@ def compute_metrics(pred_dir: str, gt_dir: str, device: torch.device,
     return aggregate
 
 
-# ── Entry Point ────────────────────────────────────────────────────────────────
+# Entry Point
 
 if __name__ == "__main__":
     args = parse_args()

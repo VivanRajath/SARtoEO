@@ -1,30 +1,4 @@
-"""
-infer.py — SAR-to-EO inference script (GalaxEye assessment CLI contract).
 
-Translates a directory of single-channel Sentinel-1 SAR images into
-corresponding Electro-Optical (RGB) images using a trained Pix2Pix generator.
-
-Usage (exact CLI required by assessment):
-    python infer.py \\
-        --input_dir  <path_to_sar_dir> \\
-        --output_dir <path_to_output_dir> \\
-        --weights    <path_to_checkpoint.pth>
-
-Input spec:
-    - Single-channel (grayscale) SAR patches
-    - VV polarisation, 256×256, PNG (or jpg/tif)
-    - dB-scaled, normalised to [0, 255]
-
-Output spec:
-    - RGB PNG images, 256×256
-    - Same filenames as inputs
-
-Colab → local workflow:
-    1. Train in Colab: python train.py --config config.yaml
-    2. Download checkpoints/checkpoint_latest.pth (or a numbered checkpoint)
-    3. Run locally in VSCode:
-           python infer.py --input_dir sar/ --output_dir out/ --weights checkpoint_latest.pth
-"""
 
 import os
 import argparse
@@ -39,7 +13,7 @@ from generator import Generator
 from utils import denormalize
 
 
-# ── Argument Parser ────────────────────────────────────────────────────────────
+# Argument Parser
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -68,7 +42,7 @@ def parse_args():
     return parser.parse_args()
 
 
-# ── Inference ──────────────────────────────────────────────────────────────────
+# Inference
 
 def run_inference(input_dir: str, output_dir: str, weights_path: str,
                   image_size: int = 256, device_str: str = "auto"):
@@ -88,7 +62,7 @@ def run_inference(input_dir: str, output_dir: str, weights_path: str,
         image_size:   Generator internal resolution (default 256).
         device_str:   "auto", "cuda", or "cpu".
     """
-    # ── Validate inputs ────────────────────────────────────────────────────────
+    # Validate inputs
     if not os.path.isdir(input_dir):
         print(f"[Error] Input directory not found: '{input_dir}'", file=sys.stderr)
         sys.exit(1)
@@ -99,7 +73,7 @@ def run_inference(input_dir: str, output_dir: str, weights_path: str,
               file=sys.stderr)
         sys.exit(1)
 
-    # ── Device ────────────────────────────────────────────────────────────────
+    # Device
     if device_str == "auto":
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     else:
@@ -110,7 +84,7 @@ def run_inference(input_dir: str, output_dir: str, weights_path: str,
         print(f"  ({torch.cuda.get_device_name(0)})", end="")
     print()
 
-    # ── Load Generator ─────────────────────────────────────────────────────────
+    # Load Generator
     gen = Generator(in_channels=1, out_channels=3).to(device)
 
     try:
@@ -130,10 +104,10 @@ def run_inference(input_dir: str, output_dir: str, weights_path: str,
     gen.eval()
     print("Generator loaded successfully.\n")
 
-    # ── Prepare output directory ───────────────────────────────────────────────
+    # Prepare output directory
     os.makedirs(output_dir, exist_ok=True)
 
-    # ── Collect input files ────────────────────────────────────────────────────
+    # Collect input files
     valid_exts = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
     input_files = sorted([
         f for f in os.listdir(input_dir)
@@ -148,14 +122,14 @@ def run_inference(input_dir: str, output_dir: str, weights_path: str,
     print(f"Output dir   : {output_dir}")
     print(f"Files found  : {len(input_files)}\n")
 
-    # ── Transforms ────────────────────────────────────────────────────────────
+    # Transforms
     resize_in  = transforms.Resize(
         (image_size, image_size),
         interpolation=transforms.InterpolationMode.BILINEAR,
         antialias=True,
     )
 
-    # ── Run inference ──────────────────────────────────────────────────────────
+    # Run inference
     n_ok = 0
     with torch.no_grad():
         for i, filename in enumerate(input_files, 1):
@@ -206,7 +180,7 @@ def run_inference(input_dir: str, output_dir: str, weights_path: str,
     print(f"\n[PASS] Done.  {n_ok}/{len(input_files)} images saved to: {output_dir}/")
 
 
-# ── Entry Point ────────────────────────────────────────────────────────────────
+# Entry Point
 
 if __name__ == "__main__":
     args = parse_args()

@@ -1,41 +1,10 @@
-"""
-generator.py — Standard Pix2Pix U-Net Generator (8 encoder levels).
 
-Architecture for 256×256 input (Isola et al., 2017):
-
-  Encoder (each step halves spatial resolution):
-    e1: in_ch → 64    (256→128)  No BatchNorm on first layer
-    e2: 64    → 128   (128→64)
-    e3: 128   → 256   (64→32)
-    e4: 256   → 512   (32→16)
-    e5: 512   → 512   (16→8)
-    e6: 512   → 512   (8→4)
-    e7: 512   → 512   (4→2)
-
-  Bottleneck:
-    b:  512   → 512   (2→1)   ReLU only (no BatchNorm)
-
-  Decoder (each step doubles resolution; skip-concat from encoder):
-    d7: 512   → 512   + skip e7 → 1024 in   Dropout
-    d6: 1024  → 512   + skip e6 → 1024 in   Dropout
-    d5: 1024  → 512   + skip e5 → 1024 in   Dropout
-    d4: 1024  → 512   + skip e4 → 1024 in
-    d3: 1024  → 256   + skip e3 →  512 in
-    d2:  512  → 128   + skip e2 →  256 in
-    d1:  256  →  64   + skip e1 →  128 in
-
-  Output:
-    128 → out_ch,  Tanh  → values in [-1, 1]
-
-Input:  [B, in_channels,  256, 256]
-Output: [B, out_channels, 256, 256]
-"""
 
 import torch
 import torch.nn as nn
 
 
-# ── Building Blocks ────────────────────────────────────────────────────────────
+# Building Blocks
 
 class EncoderBlock(nn.Module):
     """
@@ -76,7 +45,7 @@ class DecoderBlock(nn.Module):
         return self.block(x)
 
 
-# ── Generator ──────────────────────────────────────────────────────────────────
+# Generator
 
 class Generator(nn.Module):
     """
@@ -93,7 +62,7 @@ class Generator(nn.Module):
 
         f = ngf  # shorthand
 
-        # ── Encoder ───────────────────────────────────────────────────────────
+        # Encoder
         self.e1 = EncoderBlock(in_channels, f,     batch_norm=False)  # 256→128
         self.e2 = EncoderBlock(f,           f * 2)                     # 128→64
         self.e3 = EncoderBlock(f * 2,       f * 4)                     # 64→32
@@ -102,14 +71,14 @@ class Generator(nn.Module):
         self.e6 = EncoderBlock(f * 8,       f * 8)                     # 8→4
         self.e7 = EncoderBlock(f * 8,       f * 8)                     # 4→2
 
-        # ── Bottleneck ────────────────────────────────────────────────────────
+        # Bottleneck
         # Compresses to 1×1, capturing global structure
         self.bottleneck = nn.Sequential(
             nn.Conv2d(f * 8, f * 8, kernel_size=4, stride=2, padding=1, bias=False),
             nn.ReLU(inplace=True),
         )
 
-        # ── Decoder ───────────────────────────────────────────────────────────
+        # Decoder
         # Each DecoderBlock input = its own output channels (after cat = doubled)
         self.d7 = DecoderBlock(f * 8,      f * 8, dropout=True)   # 1→2
         self.d6 = DecoderBlock(f * 8 * 2,  f * 8, dropout=True)   # 2→4
@@ -119,7 +88,7 @@ class Generator(nn.Module):
         self.d2 = DecoderBlock(f * 4 * 2,  f * 2)                  # 32→64
         self.d1 = DecoderBlock(f * 2 * 2,  f)                      # 64→128
 
-        # ── Output ────────────────────────────────────────────────────────────
+        # Output
         self.final = nn.Sequential(
             nn.ConvTranspose2d(f * 2, out_channels, kernel_size=4, stride=2, padding=1),
             nn.Tanh(),          # output in [-1, 1]
@@ -135,7 +104,7 @@ class Generator(nn.Module):
         Returns:
             [B, out_channels, H, W]    — Generated EO image in [-1, 1].
         """
-        # ── Encode ────────────────────────────────────────────────────────────
+        # Encode
         e1 = self.e1(x)           # [B,   64, 128, 128]
         e2 = self.e2(e1)          # [B,  128,  64,  64]
         e3 = self.e3(e2)          # [B,  256,  32,  32]
@@ -144,10 +113,10 @@ class Generator(nn.Module):
         e6 = self.e6(e5)          # [B,  512,   4,   4]
         e7 = self.e7(e6)          # [B,  512,   2,   2]
 
-        # ── Bottleneck ────────────────────────────────────────────────────────
+        # Bottleneck
         b = self.bottleneck(e7)   # [B,  512,   1,   1]
 
-        # ── Decode with skip connections ──────────────────────────────────────
+        # Decode with skip connections
         d7 = self.d7(b)                          # [B,  512,  2,  2]
         d7 = torch.cat([d7, e7], dim=1)          # [B, 1024,  2,  2]
 
