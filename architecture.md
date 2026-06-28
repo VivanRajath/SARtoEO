@@ -503,4 +503,4 @@ Mitigation: Resolves with more epochs; or use bilinear upsample + Conv2d instead
 
 ---
 
-*For operational usage, see [RUNBOOK.md](RUNBOOK.md). For formal writeup, see [Technical_Report.pdf](Technical_Report.pdf).*
+*For operational usage, see [RUNBOOK.md](RUNBOOK.md). For formal writeup, see [Technical Report (Google Drive)](YOUR_GOOGLE_DRIVE_LINK_HERE).*

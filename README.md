@@ -10,7 +10,7 @@ problem of hallucinating perceptually realistic optical imagery from radar backs
 | Resource | Link |
 |----------|------|
 | Model Weights | [HuggingFace — VivanRajath/SAR2EO](https://huggingface.co/VivanRajath/SAR2EO) |
-| Technical Report | [Technical_Report.pdf](Technical_Report.pdf) |
+| Technical Report | [Google Drive Link](YOUR_GOOGLE_DRIVE_LINK_HERE) |
 | Architecture Deep-Dive | [architecture.md](architecture.md) |
 | Operational Runbook | [RUNBOOK.md](RUNBOOK.md) |
 
@@ -105,7 +105,7 @@ SAR2EO/
 |-- requirements.txt      <- Pinned Python dependencies
 |-- architecture.md       <- Deep-dive: pipeline, filters, eval methodology
 |-- RUNBOOK.md            <- Step-by-step guide for all workflows
-+-- Technical_Report.pdf  <- Formal 7-page technical report
+|-- (Technical_Report.pdf is uploaded to Google Drive)
 ```
 
 ---
@@ -333,7 +333,7 @@ Then run inference as described in [Section 6](#6-inference-command).
 - **PSNR 15.46 dB**: Expected for cross-modal synthesis; compare to compression (PSNR >30 dB)
 
 For detailed analysis including success cases, failure modes, and why these scores are expected for
-this ill-posed task, see [Technical_Report.pdf](Technical_Report.pdf).
+this ill-posed task, see [Technical Report (Google Drive)](YOUR_GOOGLE_DRIVE_LINK_HERE).
 
 ### Qualitative Examples
 

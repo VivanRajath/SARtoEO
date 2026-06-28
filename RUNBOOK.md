@@ -768,5 +768,5 @@ All outputs land in `outputs/` unless overridden with `--output_dir`.
 ---
 
 *For detailed architecture explanation, see [architecture.md](architecture.md).*  
-*For the formal technical report, see [Technical_Report.pdf](Technical_Report.pdf).*  
+*For the formal technical report, see [Technical Report (Google Drive)](YOUR_GOOGLE_DRIVE_LINK_HERE).*  
 *For model weights, see [HuggingFace: VivanRajath/SAR2EO](https://huggingface.co/VivanRajath/SAR2EO).*
