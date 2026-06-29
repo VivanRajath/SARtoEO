@@ -209,10 +209,12 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+For detailed explanation on kickstarting the project go to runbook.md 
+
 ### Google Colab (Training)
 
 A full Google Colab architecture study and training walkthrough is available here:
-**[📓 SAR2EO Colab Notebook](https://colab.research.google.com/drive/1mnGETON8wCK6dQDFWhzME9ehlSSfzhyd?usp=sharing)**
+**[ SAR2EO Colab Notebook](https://colab.research.google.com/drive/1mnGETON8wCK6dQDFWhzME9ehlSSfzhyd?usp=sharing)**
 
 For Colab training, use CLI overrides to redirect checkpoints to Google Drive:
 
@@ -316,8 +318,8 @@ python infer.py \
 **Example:**
 ```bash
 python infer.py \
-    --input_dir  sample_sar_images/ \
-    --output_dir generated_eo/ \
+    --input_dir  sample/ \
+    --output_dir outputs/generated_eo/ \
     --weights    checkpoints/checkpoint_latest.pth
 ```
 
@@ -433,8 +435,7 @@ D loss ~0.3 throughout = healthy GAN balance. Full log at \outputs/training_log.
 - **SSIM 0.3357**: Captures spatial structure and boundaries well, but penalized slightly by color variations
 - **PSNR 14.31 dB**: Expected range for different-modality cross-modal synthesis tasks
 
-For detailed analysis including success cases, failure modes, and why these scores are expected for
-this ill-posed task, see the [Google Colab Architecture Study](https://colab.research.google.com/drive/1mnGETON8wCK6dQDFWhzME9ehlSSfzhyd?usp=sharing).
+As mentioned in the Technical Document I have used Google Colab to 1st create tinynet and UNet Architecture and expanded to Pix2Pix GAN , To know more about it [Google Colab Architecture Study](https://colab.research.google.com/drive/1mnGETON8wCK6dQDFWhzME9ehlSSfzhyd?usp=sharing).
 
 ### Qualitative Examples
 
