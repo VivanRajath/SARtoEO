@@ -301,25 +301,33 @@ python eval.py \
 
 ## 8. Model Weights
 
-You can download the trained generator checkpoint from HuggingFace manually or automatically.
+The trained checkpoint (~654 MB) is hosted on HuggingFace and **not included in this repo**. Download it with one command:
 
-### Automatic Download
-Run the helper script included in this repository to automatically download the latest weights to the `checkpoints/` directory:
 ```bash
 python download_weights.py
 ```
 
-### Manual Download
-Download from HuggingFace:
-> **Weights**: [https://huggingface.co/VivanRajath/SAR2EO](https://huggingface.co/VivanRajath/SAR2EO)
+This will:
+- Automatically download `checkpoint_latest.pth` from [VivanRajath/SAR2EO](https://huggingface.co/VivanRajath/SAR2EO)
+- Save it directly to `checkpoints/checkpoint_latest.pth`
+- Skip re-downloading if the file already exists
+- Show a live progress bar
 
-Place the downloaded `.pth` file in the `checkpoints/` directory:
-```
-checkpoints/
-+-- checkpoint_latest.pth   <- place downloaded weights here
+> **Faster downloads** (optional): install `huggingface_hub` for a resumable download:
+> ```bash
+> pip install huggingface_hub
+> python download_weights.py
+> ```
+> Without it, the script falls back to `urllib` automatically — no extra install needed.
+
+Once downloaded, run inference:
+```bash
+python infer.py \
+    --input_dir  sample/ \
+    --output_dir outputs/generated_eo/ \
+    --weights    checkpoints/checkpoint_latest.pth
 ```
 
-Then run inference as described in [Section 6](#6-inference-command).
 
 ---
 

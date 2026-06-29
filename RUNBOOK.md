@@ -70,19 +70,24 @@ scikit-image, lpips, pytorch-fid, opencv-python, reportlab.
 
 ### Step 4 — Download model weights
 
-Download `checkpoint_latest.pth` from HuggingFace:
-> https://huggingface.co/VivanRajath/SAR2EO
+The checkpoint (~654 MB) is not included in this repo. Run this **one command** to download it automatically from HuggingFace:
 
-Place it in the `checkpoints/` folder:
-```
-checkpoints/
-└── checkpoint_latest.pth
+```bash
+python download_weights.py
 ```
 
-> **Renamed from Google Drive (checkpoint_latest (1).pth)?**
-> ```powershell
-> Rename-Item "checkpoints\checkpoint_latest (1).pth" "checkpoint_latest.pth"
-> ```
+This script will:
+- Download `checkpoint_latest.pth` directly from [VivanRajath/SAR2EO on HuggingFace](https://huggingface.co/VivanRajath/SAR2EO)
+- Save it to `checkpoints/checkpoint_latest.pth`
+- Show a live progress bar
+- Skip re-downloading if the file already exists
+
+**Optional — faster/resumable downloads:**
+```bash
+pip install huggingface_hub
+python download_weights.py
+```
+Without `huggingface_hub`, the script falls back to `urllib` automatically — no extra install required.
 
 ### Step 5 — Verify installation
 
