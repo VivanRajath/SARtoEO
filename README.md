@@ -51,17 +51,66 @@ For the full technical rationale comparing Pix2Pix vs CycleGAN vs Diffusion Mode
 ### Architecture Overview
 
 ```
-SAR Input [1x256x256]
-       |
-  +----v---------- U-Net Encoder (7 levels) -----------+
-  | e1:1->64  e2:64->128  e3:128->256  e4-e7:256->512  |
-  +--------------------------------- Bottleneck: 512->512 (1x1)
-  +-------- U-Net Decoder with Skip Connections --------+
-  | d7:512+512->512  ...  d1:256+64->64  final:128->3   |
-  +---------------------------------------+
-                                          |
-                              EO Output [3x256x256]
-                         (Tanh output -> denorm -> [0,1] PNG)
+                    [SAR Input] (1 x 256 x 256)
+                         │
+                  ┌──────▼──────┐
+                  │ Encoder (e1)│ (64 x 128 x 128)
+                  └──────┬──────┘
+                         ├─────────────────────────────────────────┐ (Skip)
+                  ┌──────▼──────┐                                  │
+                  │ Encoder (e2)│ (128 x 64 x 64)                  │
+                  └──────┬──────┘                                  │
+                         ├───────────────────────────────────┐     │
+                  ┌──────▼──────┐                            │     │
+                  │ Encoder (e3)│ (256 x 32 x 32)            │     │
+                  └──────┬──────┘                            │     │
+                         ├─────────────────────────────┐     │     │
+                  ┌──────▼──────┐                      │     │     │
+                  │ Encoder (e4)│ (512 x 16 x 16)      │     │     │
+                  └──────┬──────┘                      │     │     │
+                         ├───────────────────────┐     │     │     │
+                  ┌──────▼──────┐                │     │     │     │
+                  │ Encoder (e5)│ (512 x 8 x 8)  │     │     │     │
+                  └──────┬──────┘                │     │     │     │
+                         ├─────────────────┐     │     │     │     │
+                  ┌──────▼──────┐          │     │     │     │     │
+                  │ Encoder (e6)│ (512x4x4)│     │     │     │     │
+                  └──────┬──────┘          │     │     │     │     │
+                         ├───────────┐     │     │     │     │     │
+                  ┌──────▼──────┐    │     │     │     │     │     │
+                  │ Encoder (e7)│    │     │     │     │     │     │
+                  └──────┬──────┘    │     │     │     │     │     │
+                         │           │     │     │     │     │     │
+                  ┌──────▼──────┐    │     │     │     │     │     │
+                  │ Bottleneck  │    │     │     │     │     │     │ (512 x 1 x 1)
+                  └──────┬──────┘    │     │     │     │     │     │
+                         │           │     │     │     │     │     │
+                  ┌──────▼──────┐    │     │     │     │     │     │
+                  │ Decoder (d7)◄────┘     │     │     │     │     │ (1024 x 2 x 2)
+                  └──────┬──────┘          │     │     │     │     │
+                  ┌──────▼──────┐          │     │     │     │     │
+                  │ Decoder (d6)◄──────────┘     │     │     │     │ (1024 x 4 x 4)
+                  └──────┬──────┘                │     │     │     │
+                  ┌──────▼──────┐                │     │     │     │
+                  │ Decoder (d5)◄────────────────┘     │     │     │ (1024 x 8 x 8)
+                  └──────┬──────┘                      │     │     │
+                  ┌──────▼──────┐                      │     │     │
+                  │ Decoder (d4)◄──────────────────────┘     │     │ (1024 x 16 x 16)
+                  └──────┬──────┘                            │     │
+                  ┌──────▼──────┐                            │     │
+                  │ Decoder (d3)◄────────────────────────────┘     │ (512 x 32 x 32)
+                  └──────┬──────┘                                  │
+                  ┌──────▼──────┐                                  │
+                  │ Decoder (d2)◄──────────────────────────────────┘ (256 x 64 x 64)
+                  └──────┬──────┘
+                  ┌──────▼──────┐
+                  │ Decoder (d1)◄──────────────────────────────────── (128 x 128 x 128)
+                  └──────┬──────┘
+                  ┌──────▼──────┐
+                  │    Final    │ (ConvTranspose2d + Tanh)
+                  └──────┬──────┘
+                         │
+                  [EO Output] (3 x 256 x 256)
 ```
 
 **Generator**: 8-level U-Net — 7 encoder stages + bottleneck + 7 decoder stages, ~54M parameters.
@@ -90,22 +139,32 @@ Indices saved to `outputs/data_split.csv`.
 
 ```
 SAR2EO/
-|-- data/agri/s1/         <- SAR input (Sentinel-1 VV, grayscale PNG, 256x256)
-|-- data/agri/s2/         <- EO target (Sentinel-2 RGB PNG, 256x256)
-|-- checkpoints/          <- Saved model checkpoints (.pth)
-|-- outputs/              <- Training logs, loss curves, samples, eval results
-|-- train.py              <- Training script (ablation log, CSV/PNG output)
-|-- infer.py              <- CLI inference (GalaxEye spec-compliant)
-|-- eval.py               <- Evaluation: LPIPS, FID, SSIM, PSNR
-|-- generator.py          <- 8-level Pix2Pix U-Net generator
-|-- discriminator.py      <- 70x70 PatchGAN discriminator
-|-- dataset.py            <- Robust SAR/EO paired dataset loader
-|-- utils.py              <- Shared helpers
-|-- config.yaml           <- All hyperparameters and paths
-|-- requirements.txt      <- Pinned Python dependencies
-|-- architecture.md       <- Deep-dive: pipeline, filters, eval methodology
-|-- RUNBOOK.md            <- Step-by-step guide for all workflows
-|-- (Technical_Report.pdf is uploaded to Google Drive)
+├── checkpoints/          <- Saved model checkpoints (.pth, ignored by git except .gitkeep)
+│   └── .gitkeep
+├── data/
+│   └── agri/             <- Training dataset root folder
+│       ├── s1/           <- SAR input images (Sentinel-1 VV, grayscale PNG, 256x256)
+│       └── s2/           <- EO target images (Sentinel-2 RGB PNG, 256x256)
+├── GT/                   <- Sentinel-2 RGB ground truth for sample images (eval only)
+├── outputs/              <- Generated outputs (loss curves, logs, prediction results)
+│   └── .gitkeep
+├── sample/               <- Sentinel-1 SAR sample images for quick inference testing
+│   └── .gitkeep
+├── config.yaml           <- Hyperparameters, paths, and training config settings
+├── dataset.py            <- Custom PyTorch paired SAR/EO dataset loader
+├── discriminator.py      <- PatchGAN discriminator network architecture (~2.8M params)
+├── download_weights.py   <- Weight downloader utility from HuggingFace
+├── eval.py               <- Metric evaluation script (SSIM, PSNR, LPIPS, FID)
+├── generate_report.py    <- Automated PDF technical report generator
+├── generator.py          <- U-Net generator model architecture (~54M params)
+├── infer.py              <- Inference CLI script (translates directory of SAR -> EO)
+├── plot_loss.py          <- Utility script to plot training curves from training_log.csv
+├── requirements.txt      <- Pinned python dependencies
+├── train.py              <- Model training and validation script (supports resume)
+├── utils.py              <- Shared helper functions (seed, grids, normalization)
+├── README.md             <- Project documentation landing page
+├── RUNBOOK.md            <- Operations and setup guide
+└── architecture.md       <- Detailed architecture description and convergence analysis
 ```
 
 ---
