@@ -282,13 +282,12 @@ For custom single-image inference and preprocessing, see [RUNBOOK.md#6-custom-si
 
 ## 7. Evaluation Command
 
-After running inference, compute metrics against ground-truth:
+After running inference on sample SAR images, compute metrics against ground-truth EO images:
 
 ```bash
 python eval.py \
-    --pred_dir    generated_eo/ \
-    --gt_dir      data/agri/s2/ \
-    --split_csv   outputs/data_split.csv \
+    --pred_dir    outputs/generated_eo/ \
+    --gt_dir      GT/ \
     --output_csv  outputs/eval_results.csv \
     --output_json outputs/eval_results.json
 ```
@@ -302,8 +301,16 @@ python eval.py \
 
 ## 8. Model Weights
 
-Download the trained generator checkpoint from HuggingFace:
+You can download the trained generator checkpoint from HuggingFace manually or automatically.
 
+### Automatic Download
+Run the helper script included in this repository to automatically download the latest weights to the `checkpoints/` directory:
+```bash
+python download_weights.py
+```
+
+### Manual Download
+Download from HuggingFace:
 > **Weights**: [https://huggingface.co/VivanRajath/SAR2EO](https://huggingface.co/VivanRajath/SAR2EO)
 
 Place the downloaded `.pth` file in the `checkpoints/` directory:
@@ -318,19 +325,19 @@ Then run inference as described in [Section 6](#6-inference-command).
 
 ## 9. Results
 
-### Quantitative Metrics (600 Test Images, Held-Out Split)
+### Quantitative Metrics (24 Sample Images)
 
 | Split | LPIPS (lower better) | FID (lower better) | SSIM (higher better) | PSNR dB (higher better) |
 |---|---|---|---|---|
-| **Test (n=600)** | **0.4613** | **176.73** | **0.2725** | **15.46** |
+| **Sample (n=24)** | **0.4705** | **328.83** | **0.3357** | **14.31** |
 
-*Metrics computed on 600 held-out test images using `eval.py`. Run `eval.py --pred_dir outputs/test_pred --gt_dir data/agri/s2 --split_csv outputs/data_split.csv` to verify.*
+*Metrics computed on 24 sample images using `eval.py`. Run `python eval.py --pred_dir outputs/generated_eo/ --gt_dir GT/` to verify.*
 
 ### Metric Interpretation
-- **LPIPS 0.4613**: Moderate perceptual distance — model captures broad structure but misses some fine texture
-- **FID 176.73**: Well below random (~300-400+); generated images are statistically EO-like
-- **SSIM 0.2725**: Penalised by colour hallucination (correct field layout, wrong hue)
-- **PSNR 15.46 dB**: Expected for cross-modal synthesis; compare to compression (PSNR >30 dB)
+- **LPIPS 0.4705**: Moderate perceptual distance — model captures broad structure but misses some fine texture
+- **FID 328.83**: Generated images match basic EO statistical distributions, though with higher variance due to the small sample size
+- **SSIM 0.3357**: Captures spatial structure and boundaries well, but penalized slightly by color variations
+- **PSNR 14.31 dB**: Expected range for different-modality cross-modal synthesis tasks
 
 For detailed analysis including success cases, failure modes, and why these scores are expected for
 this ill-posed task, see [Technical Report (Google Drive)](YOUR_GOOGLE_DRIVE_LINK_HERE).

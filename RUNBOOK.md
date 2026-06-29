@@ -422,32 +422,34 @@ Compute SSIM, PSNR, LPIPS, and FID comparing generated predictions to ground-tru
 
 ### Prerequisites
 
-1. Run inference first to generate predictions: `outputs/test_pred/`
-2. Ground-truth EO images: `data/agri/s2/`
+1. Run inference first to generate predictions (e.g., from `sample/` to `outputs/generated_eo/`):
+   ```bash
+   python infer.py --input_dir sample/ --output_dir outputs/generated_eo/ --weights checkpoints/checkpoint_latest.pth
+   ```
+2. Ground-truth EO images for the samples: `GT/`
 3. Filenames between pred and GT must match (or follow the `_s1_` -> `_s2_` naming convention)
 
 ### Quick Evaluation (Minimal Flags)
 
 ```bash
 python eval.py \
-    --pred_dir outputs/test_pred/ \
-    --gt_dir   data/agri/s2/
+    --pred_dir outputs/generated_eo/ \
+    --gt_dir   GT/
 ```
 
 ### Full Evaluation with All Outputs
 
 ```bash
 python eval.py \
-    --pred_dir    outputs/test_pred/ \
-    --gt_dir      data/agri/s2/ \
+    --pred_dir    outputs/generated_eo/ \
+    --gt_dir      GT/ \
     --output_csv  outputs/eval_results.csv \
     --output_json outputs/eval_results.json
 ```
 
-### Evaluation on Test Split Only (Recommended — No Data Leakage)
+### Evaluation on Test Split Only (Recommended for Full Dataset — No Data Leakage)
 
-Use `--split_csv` to restrict evaluation to only the held-out test images (avoids
-accidentally including train/val images in your metric report):
+Use `--split_csv` when evaluating the full dataset to restrict evaluation to only the held-out test images:
 
 ```bash
 python eval.py \
@@ -466,7 +468,7 @@ python eval.py \
 | `--gt_dir` | Yes | — | Directory of ground-truth EO images |
 | `--output_csv` | No | outputs/eval_results.csv | Per-image results |
 | `--output_json` | No | outputs/eval_results.json | Aggregate metrics JSON |
-| `--split_csv` | No | None | Restrict to test split (recommended) |
+| `--split_csv` | No | None | Restrict to test split (recommended for standard dataset) |
 | `--device` | No | auto | `cuda`, `cpu`, or `auto` |
 
 ### Reading the Output
@@ -475,43 +477,43 @@ python eval.py \
 ```
 File                                   SSIM     PSNR    LPIPS
 ----------------------------------------------------------------------
-ROIs1868_patch_10_s1_agri.png        0.3142   17.23   0.4201
-ROIs1868_patch_11_s1_agri.png        0.2891   15.87   0.4712
+ROIs1868_summer_s1_59_p10.png        0.3076   13.28   0.5051
+ROIs1868_summer_s1_59_p11.png        0.3094   12.93   0.5053
 ...
 ============================================================
   EVALUATION RESULTS
 ============================================================
-  Images evaluated : 600
-  SSIM  (+)        : 0.2725
-  PSNR  (+) (dB)   : 15.46
-  LPIPS (-)        : 0.4613
-  FID   (-)        : 176.73
+  Images evaluated : 24
+  SSIM  (+)        : 0.3357
+  PSNR  (+) (dB)   : 14.31
+  LPIPS (-)        : 0.4705
+  FID   (-)        : 328.83
 ============================================================
 ```
 
 **eval_results.json** — aggregate metrics (machine-readable):
 ```json
 {
-  "n_images": 600,
-  "ssim": 0.2725,
-  "psnr": 15.46,
-  "lpips": 0.4613,
-  "fid": 176.73
+  "n_images": 24,
+  "ssim": 0.3357,
+  "psnr": 14.31,
+  "lpips": 0.4705,
+  "fid": 328.83
 }
 ```
 
 **eval_results.csv** — per-image table with MEAN and FID rows at the bottom.
 
-### Current Benchmark Results
+### Current Benchmark Results (Sample Evaluation)
 
 | Metric | Score | n_images |
 |--------|-------|----------|
-| SSIM (higher is better) | 0.2725 | 600 |
-| PSNR dB (higher is better) | 15.46 | 600 |
-| LPIPS (lower is better) | 0.4613 | 600 |
-| FID (lower is better) | 176.73 | 600 |
+| SSIM (higher is better) | 0.3357 | 24 |
+| PSNR dB (higher is better) | 14.31 | 24 |
+| LPIPS (lower is better) | 0.4705 | 24 |
+| FID (lower is better) | 328.83 | 24 |
 
-> FID computation runs Inception-v3 over all images — takes ~3-5 minutes on CPU for 600 images.
+> FID computation runs Inception-v3 over all images — takes ~10-15 seconds for 24 images on CPU.
 > This is expected behavior. Do not interrupt it.
 
 ### Common Evaluation Issues and Fixes

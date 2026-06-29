@@ -45,3 +45,9 @@ desktop.ini
 GT/
 *.zip
 
+# ── Sample images (SAR PNGs — users place their own; only track the dir) ──────
+sample/*.png
+sample/*.jpg
+sample/*.tif
+sample/*.tiff
+
