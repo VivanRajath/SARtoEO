@@ -518,6 +518,26 @@ ROIs1868_summer_s1_59_p11.png        0.3094   12.93   0.5053
 | LPIPS (lower is better) | 0.4705 | 24 |
 | FID (lower is better) | 328.83 | 24 |
 
+### Training Loss Progression (50 Epochs)
+
+Key epochs from outputs/training_log.csv:
+
+| Epoch | G Total (train) | G L1-Only (train) | D Loss (train) | G Total (val) | G L1 (val) | D Loss (val) | Note |
+|-------|-----------------|-------------------|----------------|---------------|------------|--------------|------|
+| 1  | 39.04 | 35.26 | 0.217 | 37.48 | 36.58 | 0.833 | Early training |
+| 5  | 37.60 | 34.54 | 0.271 | 34.37 | 33.22 | 0.663 | Learning |
+| 10 | 35.66 | 32.99 | 0.311 | 48.46 | 46.84 | 0.637 | Stable |
+| 15 | 34.22 | 31.61 | 0.308 | 37.18 | 36.19 | 0.581 | Still improving |
+| 20 | 34.03 | 31.66 | 0.298 | 35.30 | 32.78 | 0.529 | Plateau beginning |
+| 25 | 33.93 | 31.56 | 0.300 | 35.23 | 32.69 | 0.614 | Slow descent |
+| 30 | 33.81 | 31.53 | 0.298 | 34.93 | 32.66 | 0.514 | Converging |
+| 35 | 33.68 | 31.45 | 0.313 | 34.93 | 32.56 | 0.546 | Converging |
+| 40 | 33.66 | 31.36 | 0.325 | 34.85 | 32.47 | 0.695 | Near convergence |
+| 45 | 33.73 | 31.30 | 0.317 | 45.85 | 41.36 | 0.702 | Near convergence |
+| 50 | 33.66 | 31.22 | 0.309 | 34.95 | 32.42 | 0.627 | Final epoch |
+
+D loss stable at ~0.3 throughout = healthy GAN. Full log: outputs/training_log.csv.
+
 > FID computation runs Inception-v3 over all images — takes ~10-15 seconds for 24 images on CPU.
 > This is expected behavior. Do not interrupt it.
 
@@ -585,6 +605,9 @@ python infer.py \
 ---
 
 ## 9. Google Colab Workflow
+
+A complete interactive architecture study and training walkthrough is available on Colab:
+**[📓 SAR2EO Colab Notebook](https://colab.research.google.com/drive/1mnGETON8wCK6dQDFWhzME9ehlSSfzhyd?usp=sharing)**
 
 For training on Colab (free GPU):
 
@@ -775,5 +798,5 @@ All outputs land in `outputs/` unless overridden with `--output_dir`.
 ---
 
 *For detailed architecture explanation, see [architecture.md](architecture.md).*  
-*For the formal technical report, see [Technical Report (Google Drive)](YOUR_GOOGLE_DRIVE_LINK_HERE).*  
+*For the interactive Colab study, see [Google Colab Architecture Study](https://colab.research.google.com/drive/1mnGETON8wCK6dQDFWhzME9ehlSSfzhyd?usp=sharing).*  
 *For model weights, see [HuggingFace: VivanRajath/SAR2EO](https://huggingface.co/VivanRajath/SAR2EO).*

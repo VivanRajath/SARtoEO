@@ -10,7 +10,7 @@ problem of hallucinating perceptually realistic optical imagery from radar backs
 | Resource | Link |
 |----------|------|
 | Model Weights | [HuggingFace — VivanRajath/SAR2EO](https://huggingface.co/VivanRajath/SAR2EO) |
-| Technical Report | [Google Drive Link](YOUR_GOOGLE_DRIVE_LINK_HERE) |
+| Google Colab Study | [Colab Notebook — SAR2EO Architecture Study](https://colab.research.google.com/drive/1mnGETON8wCK6dQDFWhzME9ehlSSfzhyd?usp=sharing) |
 | Architecture Deep-Dive | [architecture.md](architecture.md) |
 | Operational Runbook | [RUNBOOK.md](RUNBOOK.md) |
 
@@ -211,6 +211,9 @@ pip install -r requirements.txt
 
 ### Google Colab (Training)
 
+A full Google Colab architecture study and training walkthrough is available here:
+**[📓 SAR2EO Colab Notebook](https://colab.research.google.com/drive/1mnGETON8wCK6dQDFWhzME9ehlSSfzhyd?usp=sharing)**
+
 For Colab training, use CLI overrides to redirect checkpoints to Google Drive:
 
 ```python
@@ -337,9 +340,20 @@ For custom single-image inference and preprocessing, see [RUNBOOK.md#6-custom-si
 After running inference on sample SAR images, compute metrics against ground-truth EO images:
 
 ```bash
+# Quick evaluation against sample ground truths (GT/)
 python eval.py \
     --pred_dir    outputs/generated_eo/ \
     --gt_dir      GT/ \
+    --output_csv  outputs/eval_results.csv \
+    --output_json outputs/eval_results.json
+```
+
+```bash
+# Full test-split evaluation (no data leakage — recommended)
+python eval.py \
+    --pred_dir    outputs/test_pred/ \
+    --gt_dir      data/agri/s2/ \
+    --split_csv   outputs/data_split.csv \
     --output_csv  outputs/eval_results.csv \
     --output_json outputs/eval_results.json
 ```
@@ -393,6 +407,26 @@ python infer.py \
 
 *Metrics computed on 24 sample images using `eval.py`. Run `python eval.py --pred_dir outputs/generated_eo/ --gt_dir GT/` to verify.*
 
+### Training Loss Progression (50 Epochs)
+
+Key epochs from outputs/training_log.csv:
+
+| Epoch | G Total (train) | G L1-Only (train) | D Loss (train) | G Total (val) | G L1 (val) | D Loss (val) | Note |
+|-------|-----------------|-------------------|----------------|---------------|------------|--------------|------|
+| 1  | 39.04 | 35.26 | 0.217 | 37.48 | 36.58 | 0.833 | Early training |
+| 5  | 37.60 | 34.54 | 0.271 | 34.37 | 33.22 | 0.663 | Learning |
+| 10 | 35.66 | 32.99 | 0.311 | 48.46 | 46.84 | 0.637 | Stable |
+| 15 | 34.22 | 31.61 | 0.308 | 37.18 | 36.19 | 0.581 | Still improving |
+| 20 | 34.03 | 31.66 | 0.298 | 35.30 | 32.78 | 0.529 | Plateau beginning |
+| 25 | 33.93 | 31.56 | 0.300 | 35.23 | 32.69 | 0.614 | Slow descent |
+| 30 | 33.81 | 31.53 | 0.298 | 34.93 | 32.66 | 0.514 | Converging |
+| 35 | 33.68 | 31.45 | 0.313 | 34.93 | 32.56 | 0.546 | Converging |
+| 40 | 33.66 | 31.36 | 0.325 | 34.85 | 32.47 | 0.695 | Near convergence |
+| 45 | 33.73 | 31.30 | 0.317 | 45.85 | 41.36 | 0.702 | Near convergence |
+| 50 | 33.66 | 31.22 | 0.309 | 34.95 | 32.42 | 0.627 | Final epoch |
+
+D loss ~0.3 throughout = healthy GAN balance. Full log at \outputs/training_log.csv\.
+
 ### Metric Interpretation
 - **LPIPS 0.4705**: Moderate perceptual distance — model captures broad structure but misses some fine texture
 - **FID 328.83**: Generated images match basic EO statistical distributions, though with higher variance due to the small sample size
@@ -400,7 +434,7 @@ python infer.py \
 - **PSNR 14.31 dB**: Expected range for different-modality cross-modal synthesis tasks
 
 For detailed analysis including success cases, failure modes, and why these scores are expected for
-this ill-posed task, see [Technical Report (Google Drive)](YOUR_GOOGLE_DRIVE_LINK_HERE).
+this ill-posed task, see the [Google Colab Architecture Study](https://colab.research.google.com/drive/1mnGETON8wCK6dQDFWhzME9ehlSSfzhyd?usp=sharing).
 
 ### Qualitative Examples
 

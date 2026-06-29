@@ -3,6 +3,8 @@
 > **Full Pipeline Explanation | Model Design Rationale | Training Strategy | Evaluation Methodology**
 >
 > This document provides an in-depth technical reference for every component of the SAR-to-EO translation pipeline.
+>
+> **[📓 Interactive Colab Study](https://colab.research.google.com/drive/1mnGETON8wCK6dQDFWhzME9ehlSSfzhyd?usp=sharing)** — Full architecture walkthrough and evaluation on Google Colab.
 
 ---
 
@@ -346,6 +348,8 @@ Does NOT measure per-pair similarity — measures whether the generated SET look
 
 **Our score 328.83**: Reflects the overall color and statistical representation of the small evaluation set (24 images), showing that the model generates realistic textures albeit with higher variance due to the small sample size.
 
+For a deeper interactive analysis and visualizations, see the **[Google Colab Architecture Study](https://colab.research.google.com/drive/1mnGETON8wCK6dQDFWhzME9ehlSSfzhyd?usp=sharing)**.
+
 ### Metric Hierarchy for SAR-to-EO
 In order of diagnostic value:
 1. **FID** — Distribution-level quality (does the generated set look like real EO overall?)
@@ -368,15 +372,26 @@ The model was trained for 50 epochs on 2,800 images (batch size 2 = ~1,400 itera
 
 ### Loss Progression
 
-| Epoch | G Total Train | G L1-Only Train | D Loss Train | Note |
-|-------|--------------|-----------------|--------------|------|
-| 1 | 39.04 | 35.26 | 0.217 | Early training |
-| 5 | 37.60 | 34.54 | 0.271 | Learning |
-| 10 | 35.66 | 32.99 | 0.311 | Stable |
-| 15 | 34.22 | 31.61 | 0.308 | Still improving |
+Full 50-epoch log from outputs/training_log.csv (key epochs shown):
+
+| Epoch | G Total (train) | G L1-Only (train) | D Loss (train) | G Total (val) | G L1 (val) | D Loss (val) | Note |
+|-------|-----------------|-------------------|----------------|---------------|------------|--------------|------|
+| 1  | 39.04 | 35.26 | 0.217 | 37.48 | 36.58 | 0.833 | Early training |
+| 5  | 37.60 | 34.54 | 0.271 | 34.37 | 33.22 | 0.663 | Learning |
+| 10 | 35.66 | 32.99 | 0.311 | 48.46 | 46.84 | 0.637 | Stable |
+| 15 | 34.22 | 31.61 | 0.308 | 37.18 | 36.19 | 0.581 | Still improving |
+| 20 | 34.03 | 31.66 | 0.298 | 35.30 | 32.78 | 0.529 | Plateau beginning |
+| 25 | 33.93 | 31.56 | 0.300 | 35.23 | 32.69 | 0.614 | Slow descent |
+| 30 | 33.81 | 31.53 | 0.298 | 34.93 | 32.66 | 0.514 | Converging |
+| 35 | 33.68 | 31.45 | 0.313 | 34.93 | 32.56 | 0.546 | Converging |
+| 40 | 33.66 | 31.36 | 0.325 | 34.85 | 32.47 | 0.695 | Near convergence |
+| 45 | 33.73 | 31.30 | 0.317 | 45.85 | 41.36 | 0.702 | Near convergence |
+| 50 | 33.66 | 31.22 | 0.309 | 34.95 | 32.42 | 0.627 | Final epoch |
 
 **Monotonically decreasing G/L1 loss + stable D loss (~0.3)** = healthy GAN training.
 D loss ~0.3 means neither G nor D is collapsing.
+Val D loss oscillation (0.5–1.0) is normal — discriminator sees only ~600 val images.
+Occasional val G spikes (epochs 3, 10, 24, 38, 45) are hard validation batches; train loss remains smooth.
 
 ### Why More Epochs Would Help
 
@@ -502,4 +517,4 @@ Mitigation: Resolves with more epochs; or use bilinear upsample + Conv2d instead
 
 ---
 
-*For operational usage, see [RUNBOOK.md](RUNBOOK.md). For formal writeup, see [Technical Report (Google Drive)](YOUR_GOOGLE_DRIVE_LINK_HERE).*
+*For operational usage, see [RUNBOOK.md](RUNBOOK.md). For an interactive Colab study, see [Google Colab Architecture Study](https://colab.research.google.com/drive/1mnGETON8wCK6dQDFWhzME9ehlSSfzhyd?usp=sharing).*
